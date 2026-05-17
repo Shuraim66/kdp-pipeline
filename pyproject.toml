@@ -28,6 +28,7 @@ dev = [
     "pytest-cov>=5.0",
     "mypy>=1.11",
     "ruff>=0.6",
+    "types-pyyaml>=6.0.12",
 ]
 
 # Non-packaged application: `src` is the import root (`python -m src.main`).
@@ -53,3 +54,7 @@ strict = true
 files = ["src"]
 warn_unused_configs = true
 pretty = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

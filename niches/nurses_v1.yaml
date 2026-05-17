@@ -1,0 +1,95 @@
+# Nurses — bold & easy coloring book. First production target.
+# Validate: uv run python -m src.main validate-niche niches/nurses_v1.yaml
+
+slug: nurses_bold_easy_v1
+niche: nurses
+
+book:
+  trim_size: "8.5x8.5"
+  page_count: 50
+  price_usd: 9.99
+  target_audience: "nurses, BSN students, nursing graduates"
+
+style:
+  art_style: >
+    bold and easy coloring book, thick black outlines, no shading, no gray,
+    pure black line art on white background, large simple shapes
+  line_weight: "very thick"
+  negative_prompts: >
+    shading, gray tones, hatching, color, fill, photorealistic, 3d, depth,
+    fine lines, intricate details, text, letters, numbers, signatures,
+    watermarks, copyright, borders
+
+subjects:
+  - "stethoscope and medical equipment arrangement"
+  - "a nurse's cap with a caduceus emblem"
+  - "a heartbeat line forming a heart shape"
+  - "a medical bag surrounded by bandages and supplies"
+  - "a caring nurse tending to a patient at the bedside"
+  - "a syringe and medicine vial with decorative flourishes"
+  - "a clipboard with a checklist and a pen"
+  - "a first aid kit overflowing with supplies"
+  - "a blood pressure cuff and gauge"
+  - "a nurse standing proudly holding a clipboard"
+  - "a medical cross inside a laurel wreath"
+  - "a thermometer with cheerful decorative elements"
+  - "a pill bottle with scattered capsules"
+  - "an IV drip stand with a hanging fluid bag"
+  - "a pair of nursing clogs and patterned scrubs"
+  - "an anatomical heart with simple bold detail"
+  - "a coffee mug with a nurse-fuel theme"
+  - "a badge reel and lanyard with an ID card"
+  - "an otoscope and reflex hammer arrangement"
+  - "a teddy bear with a bandage for the pediatric ward"
+  - "a hospital wheelchair with a comfort blanket"
+  - "a nurse superhero with a flowing cape"
+  - "a bandage roll with scissors and medical tape"
+  - "a recovery chart showing an upward trend"
+  - "a bouquet of flowers with a thank-you card for nurses"
+
+variations_per_subject: 2
+
+composition_modifiers:
+  - "centered composition"
+  - "with decorative scattered elements around"
+  - "with simple geometric border"
+  - "on a circular background"
+  - "diagonal composition"
+  - "with small accent shapes in corners"
+
+metadata:
+  title_seed: "Nurse Life: A Bold & Easy Coloring Book"
+  subtitle_seed: "50 Stress-Relief Designs Celebrating the Nursing Journey"
+  keywords_seed:
+    - "nurse coloring book"
+    - "nursing gifts for women"
+    - "RN gifts"
+    - "BSN graduation gift"
+    - "nurse appreciation"
+    - "stress relief coloring book"
+    - "nursing student gift"
+  categories:
+    - "Books > Crafts, Hobbies & Home > Crafts & Hobbies > Drawing"
+    - "Books > Health, Fitness & Dieting > Nursing"
+
+cover:
+  background_color: "#1a3a52"
+  accent_color: "#f4d35e"
+  text_color: "#ffffff"
+  hero_subject: "a stethoscope arranged in a heart shape with surrounding medical icons"
+  hero_style: "colorful, simple flat illustration, vector style, no text"
+  font_family: "Bebas Neue"
+
+generation:
+  model: "fal-ai/flux/schnell"
+  image_dimensions: [2550, 2550]
+  num_inference_steps: 4
+  guidance_scale: 0.0
+  fixed_seed: null
+
+qa:
+  min_white_pct: 90.0
+  max_gray_pct: 3.0
+  required_white_margin_px: 75
+  required_dimensions: [2550, 2550]
+  max_retries_per_slot: 3
