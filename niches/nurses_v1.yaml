@@ -12,8 +12,8 @@ book:
 
 style:
   art_style: >
-    bold and easy line art, thick black outlines, no shading, no gray,
-    pure black line art on white background, large simple shapes
+    bold and easy line art, thick black outlines, pure black line art,
+    large simple shapes
   line_weight: "very thick"
   negative_prompts: >
     shading, gray tones, hatching, color, fill, photorealistic, 3d, depth,
@@ -88,18 +88,25 @@ cover:
   font_family: "Bebas Neue"
 
 generation:
-  # FLUX schnell caps output at 2048 px; request that directly so the cost
-  # estimate is accurate. The post-process upscales to required_dimensions.
-  model: "fal-ai/flux/schnell"
-  image_dimensions: [2048, 2048]
-  num_inference_steps: 4
-  guidance_scale: 0.0
+  # Phase Q2: FLUX dev + coloring-book LoRA via the fal-ai/flux-lora endpoint.
+  # Generated at 1000x1000 (1 megapixel); the post-process upscales to 2550.
+  model: "fal-ai/flux-lora"
+  image_dimensions: [1000, 1000]
+  num_inference_steps: 28
+  guidance_scale: 3.5
   fixed_seed: null
+  loras:
+    - path: "https://huggingface.co/renderartist/coloringbookflux/resolve/main/c0l0ringb00k_Flux_v1_renderartist.safetensors"
+      scale: 1.0
+      name: "coloringbookflux_renderartist"
+      trigger: "c0l0ringb00k coloring book page"
 
 qa:
   # required_dimensions is the post-process target: 2550 px / 8" safe area
   # = 318 DPI, clearing KDP's 300-DPI minimum.
-  min_white_pct: 90.0
+  # Bold & Easy specific: thick-line art legitimately carries more ink than
+  # thin line art, so the white-page floor is loosened from 90 to 85.
+  min_white_pct: 85.0
   max_gray_pct: 3.0
   required_white_margin_px: 75
   required_dimensions: [2550, 2550]

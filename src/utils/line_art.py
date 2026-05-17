@@ -14,15 +14,16 @@ import io
 import numpy as np
 from PIL import Image, ImageFilter
 
-# A grayscale pixel darker than this (0-255) is treated as ink. Kept near the
-# midpoint: real strokes are near-black, while the model's faint background
-# noise sits well above this — so noise stays white instead of hardening into
-# black speckle.
-_INK_THRESHOLD = 128
+# A grayscale pixel darker than this (0-255) is treated as ink. Set high (200):
+# the coloring-book LoRA draws complex scenes in pale grey strokes (median
+# brightness up to ~240), and a midpoint cutoff silently dropped them, leaving
+# broken or near-blank pages. The LoRA's backgrounds stay clean white well
+# above 200, so noise still does not harden into black speckle.
+_INK_THRESHOLD = 200
 # MinFilter window for stroke dilation — 5 turns the model's thin strokes bold.
 _DILATE_WINDOW = 5
 # Re-binarise cutoff applied after the upscale interpolation.
-_UPSCALE_CUTOFF = 128
+_UPSCALE_CUTOFF = 200
 
 
 def _binarise(image: Image.Image, threshold: int) -> Image.Image:

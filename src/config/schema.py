@@ -55,14 +55,24 @@ class CoverSpec(_Strict):
     font_family: str
 
 
+class LoraConfig(_Strict):
+    """One LoRA adapter, injected at inference via the fal-ai/flux-lora endpoint."""
+
+    path: str  # URL to the .safetensors weights (HuggingFace or Civitai)
+    scale: float = Field(default=1.0, ge=0.0, le=2.0)
+    name: str | None = None  # human label, for logs only
+    trigger: str | None = None  # phrase prepended to the prompt to activate the style
+
+
 class GenerationSpec(_Strict):
     """The `generation:` section — Fal.ai model and parameters."""
 
-    model: str
+    model: str = "fal-ai/flux/dev"
     image_dimensions: tuple[int, int]
     num_inference_steps: int = Field(ge=1)
     guidance_scale: float = Field(ge=0)
     fixed_seed: int | None = None
+    loras: list[LoraConfig] = Field(default_factory=list)
 
 
 class QASpec(_Strict):

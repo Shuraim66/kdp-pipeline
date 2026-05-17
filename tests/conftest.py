@@ -33,6 +33,7 @@ def make_niche_config() -> Callable[..., NicheConfig]:
         subjects: int = 12,
         variations: int = 2,
         max_retries: int = 2,
+        loras: list[dict[str, object]] | None = None,
     ) -> NicheConfig:
         data: dict[str, object] = {
             "slug": "qa_test_v1",
@@ -72,6 +73,7 @@ def make_niche_config() -> Callable[..., NicheConfig]:
                 "num_inference_steps": 4,
                 "guidance_scale": 0.0,
                 "fixed_seed": None,
+                "loras": loras or [],
             },
             "qa": {
                 "min_white_pct": 90.0,

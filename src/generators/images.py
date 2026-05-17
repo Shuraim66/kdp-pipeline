@@ -188,6 +188,9 @@ async def _generate_one(
     )
     # FLUX schnell takes no guidance; a niche signals that with guidance 0.
     guidance = generation.guidance_scale if generation.guidance_scale > 0 else None
+    # `loras` and `negative_prompt` are only valid on the fal-ai/flux-lora
+    # endpoint — send them only when the niche actually configures a LoRA.
+    loras = [{"path": lora.path, "scale": lora.scale} for lora in generation.loras]
 
     result = await provider.generate_image(
         prompt=planned.prompt,
@@ -197,6 +200,8 @@ async def _generate_one(
         num_inference_steps=generation.num_inference_steps,
         seed=seed,
         guidance_scale=guidance,
+        negative_prompt=planned.negative_prompt if loras else None,
+        loras=loras or None,
         book_id=book.id,
     )
 
@@ -223,6 +228,7 @@ async def _generate_one(
         "guidance_scale": generation.guidance_scale,
         "subject": planned.slot.subject,
         "variation_idx": planned.slot.variation_idx,
+        "loras": [lora.name or lora.path for lora in generation.loras],
     }
     await asyncio.to_thread(
         create_image,

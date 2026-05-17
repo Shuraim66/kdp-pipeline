@@ -8,10 +8,9 @@ from src.config.schema import NicheConfig
 # prompt. They target the diffusion model's observed failure modes — thin,
 # sketchy, broken strokes — independent of subject.
 #
-# Caveat: FLUX schnell is guidance-distilled and does not honour negative
-# prompts, and the Fal provider does not forward them to the API anyway. The
-# positive prompt below carries the real weight; the negative is kept for the
-# record and for a possible future switch to a guidance model (e.g. flux/dev).
+# Note: the plain fal-ai/flux/* endpoints take no negative prompt, so this is
+# unused until the pipeline moves to the fal-ai/flux-lora endpoint (Q2), which
+# does accept negative_prompt.
 _LINE_QUALITY_NEGATIVES = (
     "thin lines, hairline strokes, sketchy, pencil sketch, broken lines, "
     "gaps in lines, disconnected pieces, incomplete shapes, floating artifacts"
@@ -25,28 +24,28 @@ def build_image_prompt(config: NicheConfig, subject: str, variation_idx: int) ->
     modifier, cycling through `composition_modifiers` so each variation of a
     subject is framed differently.
 
-    The prompt front-loads the line-weight directive — diffusion models weight
-    leading tokens most heavily — and states an explicit stroke width, since
-    schnell ignores the negative prompt. The literal words "coloring book" are
-    kept out: schnell renders them as garbled title text across the page.
+    Any configured LoRA trigger phrases lead the prompt — a LoRA needs its
+    trigger to activate its trained style. The subject comes next: diffusion
+    models weight leading tokens heavily, and FLUX dev drew blank pages when
+    the prompt opened with a wall of style wording. Negations ("no colour",
+    "no shading") live only in the negative prompt, and "white background"
+    appears once, near the end.
     """
     modifiers = config.composition_modifiers
     modifier = modifiers[variation_idx % len(modifiers)]
-    prompt = " ".join(
+    triggers = [lora.trigger for lora in config.generation.loras if lora.trigger]
+    prompt = ", ".join(
         [
-            "thick black outlines",
+            *triggers,
+            subject,
+            "a single coherent illustration, one complete object with fully connected outlines",
             config.style.art_style.strip(),
             "in a cute simple children's cartoon style",
-            subject,
-            modifier,
-            "complete object, fully connected outlines, no broken lines, "
-            "no disconnected pieces, single coherent illustration",
-            "isolated on pure white background",
+            f"{config.style.line_weight} black outlines",
             "thick continuous black lines 4-6 pixels wide",
-            f"{config.style.line_weight} black lines",
-            "simple black and white line drawing",
-            "vector style, professional illustration",
-            "clean composition with margin around edges",
+            modifier,
+            "centered with a comfortable margin around the edges",
+            "on a plain white background",
         ]
     )
     negative_prompt = f"{config.style.negative_prompts.strip()}, {_LINE_QUALITY_NEGATIVES}"

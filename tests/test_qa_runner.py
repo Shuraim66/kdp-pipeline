@@ -69,6 +69,8 @@ class _FakeFal:
         num_inference_steps: int,
         seed: int | None = None,
         guidance_scale: float | None = None,
+        negative_prompt: str | None = None,
+        loras: object = None,
         book_id: object = None,
         image_id: object = None,
     ) -> FalImageResult:

@@ -16,21 +16,38 @@ def test_prompt_contains_subject_and_style(niche_config) -> None:
     assert "a teddy bear" in prompt
     assert niche_config.style.art_style.strip() in prompt
     assert niche_config.style.line_weight in prompt
-    assert "simple black and white line drawing" in prompt
-    assert "isolated on pure white background" in prompt
+    assert "on a plain white background" in prompt
 
 
-def test_prompt_front_loads_line_weight(niche_config) -> None:
-    prompt, _ = build_image_prompt(niche_config, "a teddy bear", 0)
-    assert prompt.startswith("thick black outlines")
+def test_prompt_front_loads_subject(make_niche_config) -> None:
+    # With no LoRA the subject leads — FLUX dev drew blank pages when the
+    # prompt opened with a wall of style wording.
+    prompt, _ = build_image_prompt(make_niche_config(), "a teddy bear", 0)
+    assert prompt.startswith("a teddy bear")
     assert "thick continuous black lines 4-6 pixels wide" in prompt
     assert "in a cute simple children's cartoon style" in prompt
 
 
-def test_prompt_avoids_text_triggering_words(niche_config) -> None:
-    # schnell renders the literal word "book" as garbled title text — the
-    # prompt and the niche's art_style must both keep it out.
+def test_prompt_leads_with_lora_trigger(make_niche_config) -> None:
+    # A LoRA's trigger phrase must lead the prompt to activate its style.
+    config = make_niche_config(
+        loras=[{"path": "https://example.com/cb.safetensors", "trigger": "c0l0r book"}]
+    )
+    prompt, _ = build_image_prompt(config, "a teddy bear", 0)
+    assert prompt.startswith("c0l0r book, a teddy bear")
+
+
+def test_prompt_mentions_white_background_once(niche_config) -> None:
+    # Repeated "white background" saturated the prompt and blanked dev output.
     prompt, _ = build_image_prompt(niche_config, "a teddy bear", 0)
+    assert prompt.lower().count("white background") == 1
+
+
+def test_prompt_avoids_text_triggering_words(make_niche_config) -> None:
+    # Without a LoRA the prompt carries no "book" — the bare model renders the
+    # literal word as garbled title text. (A LoRA trigger may legitimately
+    # contain it; the LoRA is trained to read it as a style cue, not text.)
+    prompt, _ = build_image_prompt(make_niche_config(), "a teddy bear", 0)
     assert "book" not in prompt.lower()
 
 

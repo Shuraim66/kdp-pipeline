@@ -30,12 +30,14 @@ from src.utils.retries import make_async_retrying
 _PROVIDER = "fal"
 _OPERATION = "generate_image"
 
-# Fal.ai pricing, verified against the model pages on 2026-05-17: every FLUX
+# Fal.ai pricing, verified against the model pages on 2026-05-18: every FLUX
 # endpoint bills per megapixel, rounding the image area UP to the next whole
-# megapixel. Revisit if Fal changes its rates.
+# megapixel. A 2048x2048 image is 5 MP — e.g. flux/dev costs $0.125. Revisit
+# if Fal changes its rates.
 _RATE_PER_MEGAPIXEL: dict[str, Decimal] = {
     "fal-ai/flux/schnell": Decimal("0.003"),
     "fal-ai/flux/dev": Decimal("0.025"),
+    "fal-ai/flux-lora": Decimal("0.035"),
 }
 # Fallback for an unrecognised model: the priciest known rate, so an unknown
 # model over-reports rather than under-reports spend.
@@ -111,10 +113,16 @@ class FalProvider:
         num_inference_steps: int,
         seed: int | None = None,
         guidance_scale: float | None = None,
+        negative_prompt: str | None = None,
+        loras: list[dict[str, Any]] | None = None,
         book_id: UUID | None = None,
         image_id: UUID | None = None,
     ) -> FalImageResult:
-        """Render one image, retrying transient errors, logging every attempt."""
+        """Render one image, retrying transient errors, logging every attempt.
+
+        `negative_prompt` and `loras` are only accepted by the
+        `fal-ai/flux-lora` endpoint; pass them only when that model is in use.
+        """
         arguments: dict[str, Any] = {
             "prompt": prompt,
             "image_size": {"width": width, "height": height},
@@ -129,6 +137,10 @@ class FalProvider:
             arguments["seed"] = seed
         if guidance_scale is not None:
             arguments["guidance_scale"] = guidance_scale
+        if negative_prompt is not None:
+            arguments["negative_prompt"] = negative_prompt
+        if loras:
+            arguments["loras"] = loras
         request_params: dict[str, Any] = {"model": model, **arguments}
 
         async with self._semaphore:
