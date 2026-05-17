@@ -24,6 +24,8 @@ from src.db.repos.images import count_by_status, list_images
 from src.generators.cover import build_all_covers, generate_hero
 from src.generators.images import plan_generation, resolve_book, run_generation
 from src.generators.interior import build_interior_pdf
+from src.generators.metadata import MetadataValidationError, run_metadata
+from src.providers.anthropic import get_anthropic_provider
 from src.providers.fal import cost_for_image, get_fal_provider
 from src.qa.pdf_qa import check_cover_pdf, check_interior_pdf
 from src.qa.runner import apply_manual_verdict, build_review_html, run_qa
@@ -393,6 +395,49 @@ def build_cover_command(slug: str, hero: str | None) -> None:
     )
     if not all_passed:
         raise SystemExit(1)
+
+
+@cli.command("generate-metadata")
+@click.argument("slug")
+def generate_metadata_command(slug: str) -> None:
+    """Generate the KDP listing metadata, description, and upload checklist."""
+    try:
+        book, config = resolve_book(slug)
+    except (BookNotFoundError, ValidationError, ValueError) as exc:
+        click.echo(f"ERROR — {exc}", err=True)
+        raise SystemExit(1) from exc
+    if book.status not in (BookStatus.ASSEMBLING, BookStatus.METADATA_PENDING):
+        click.echo(
+            f"ERROR — book is '{book.status}'; metadata needs status 'assembling'.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    try:
+        provider = get_anthropic_provider()
+    except RuntimeError as exc:
+        click.echo(f"ERROR — {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    try:
+        metadata = run_metadata(
+            book, config, provider=provider, output_dir=get_settings().output_dir
+        )
+    except MetadataValidationError as exc:
+        click.echo(f"ERROR — {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    book_dir = get_settings().output_dir / book.slug
+    click.echo(f"Title:     {metadata.title}")
+    click.echo(f"Subtitle:  {metadata.subtitle}")
+    click.echo(f"Keywords:  {len(metadata.keywords)}")
+    click.echo(f"Desc:      {len(metadata.description)} chars")
+    click.echo(f"Written:   {book_dir / 'metadata.json'}")
+    click.echo(f"           {book_dir / 'description.txt'}")
+    click.echo(f"           {book_dir / 'kdp_checklist.md'}")
+    refreshed = get_book_by_id(book.id)
+    if refreshed is not None:
+        click.echo(f"Status:    {refreshed.status}")
 
 
 if __name__ == "__main__":
