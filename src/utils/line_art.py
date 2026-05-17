@@ -14,8 +14,11 @@ import io
 import numpy as np
 from PIL import Image, ImageFilter
 
-# A grayscale pixel darker than this (0-255) is treated as ink.
-_INK_THRESHOLD = 200
+# A grayscale pixel darker than this (0-255) is treated as ink. Kept near the
+# midpoint: real strokes are near-black, while the model's faint background
+# noise sits well above this — so noise stays white instead of hardening into
+# black speckle.
+_INK_THRESHOLD = 128
 # MinFilter window for stroke dilation — 5 turns the model's thin strokes bold.
 _DILATE_WINDOW = 5
 # Re-binarise cutoff applied after the upscale interpolation.

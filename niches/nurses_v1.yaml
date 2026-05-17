@@ -12,7 +12,7 @@ book:
 
 style:
   art_style: >
-    bold and easy coloring book, thick black outlines, no shading, no gray,
+    bold and easy line art, thick black outlines, no shading, no gray,
     pure black line art on white background, large simple shapes
   line_weight: "very thick"
   negative_prompts: >
@@ -21,41 +21,47 @@ style:
     watermarks, copyright, borders
 
 subjects:
-  - "stethoscope and medical equipment arrangement"
-  - "a nurse's cap with a caduceus emblem"
+  # Single-subject, cute/iconic, or character-scene phrasing only — no
+  # "arrangement"/"stack"/"with surrounding" or multi-item lists, which make
+  # schnell render incoherent scattered still-lifes.
+  - "a cute stethoscope"
+  - "a nurse's cap with a small heart emblem"
   - "a heartbeat line forming a heart shape"
-  - "a medical bag surrounded by bandages and supplies"
+  - "a cute medical bag with a star emblem"
   - "a caring nurse tending to a patient at the bedside"
-  - "a syringe and medicine vial with decorative flourishes"
-  - "a clipboard with a checklist and a pen"
-  - "a first aid kit overflowing with supplies"
-  - "a blood pressure cuff and gauge"
+  - "a cute syringe with a smiling face"
+  - "a clipboard with a big checkmark on it"
+  - "a single first aid kit with a cross on it"
+  - "a cute blood pressure cuff with a heart design"
   - "a nurse standing proudly holding a clipboard"
   - "a medical cross inside a laurel wreath"
-  - "a thermometer with cheerful decorative elements"
-  - "a pill bottle with scattered capsules"
-  - "an IV drip stand with a hanging fluid bag"
-  - "a pair of nursing clogs and patterned scrubs"
-  - "an anatomical heart with simple bold detail"
-  - "a coffee mug with a nurse-fuel theme"
-  - "a badge reel and lanyard with an ID card"
-  - "an otoscope and reflex hammer arrangement"
-  - "a teddy bear with a bandage for the pediatric ward"
-  - "a hospital wheelchair with a comfort blanket"
+  - "a kawaii thermometer with a smiling face"
+  - "a smiling pill bottle with a happy face"
+  - "a single IV drip bag with a heart on it"
+  - "a pair of cute nursing clogs"
+  - "a cheerful heart character with a smiling face"
+  - "a cute steaming coffee mug with a heart"
+  - "a cute lanyard with a round badge"
+  - "a cute reflex hammer with a star"
+  - "a cute teddy bear with a bandage"
+  - "a cute hospital wheelchair"
   - "a nurse superhero with a flowing cape"
-  - "a bandage roll with scissors and medical tape"
-  - "a recovery chart showing an upward trend"
-  - "a bouquet of flowers with a thank-you card for nurses"
+  - "a cute adhesive bandage with a smiling face"
+  - "a cute heart with a bandage"
+  - "a cheerful bouquet of flowers"
 
 variations_per_subject: 2
 
 composition_modifiers:
+  # With variations_per_subject: 2, only [0] and [1] are ever used — one per
+  # variation. Both must keep the subject a single coherent illustration;
+  # "scattered elements" wording is what broke earlier batches.
   - "centered composition"
-  - "with decorative scattered elements around"
-  - "with simple geometric border"
+  - "with a simple decorative border"
   - "on a circular background"
   - "diagonal composition"
   - "with small accent shapes in corners"
+  - "with a soft rounded frame"
 
 metadata:
   title_seed: "Nurse Life: A Bold & Easy Coloring Book"

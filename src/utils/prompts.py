@@ -27,7 +27,8 @@ def build_image_prompt(config: NicheConfig, subject: str, variation_idx: int) ->
 
     The prompt front-loads the line-weight directive — diffusion models weight
     leading tokens most heavily — and states an explicit stroke width, since
-    schnell ignores the negative prompt.
+    schnell ignores the negative prompt. The literal words "coloring book" are
+    kept out: schnell renders them as garbled title text across the page.
     """
     modifiers = config.composition_modifiers
     modifier = modifiers[variation_idx % len(modifiers)]
@@ -35,7 +36,7 @@ def build_image_prompt(config: NicheConfig, subject: str, variation_idx: int) ->
         [
             "thick black outlines",
             config.style.art_style.strip(),
-            "in the style of a children's coloring book",
+            "in a cute simple children's cartoon style",
             subject,
             modifier,
             "complete object, fully connected outlines, no broken lines, "
@@ -43,7 +44,7 @@ def build_image_prompt(config: NicheConfig, subject: str, variation_idx: int) ->
             "isolated on pure white background",
             "thick continuous black lines 4-6 pixels wide",
             f"{config.style.line_weight} black lines",
-            "coloring book page for adults",
+            "simple black and white line drawing",
             "vector style, professional illustration",
             "clean composition with margin around edges",
         ]
