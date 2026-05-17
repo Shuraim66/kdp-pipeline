@@ -7,7 +7,6 @@ from typing import Any
 
 import pytest
 from pydantic import ValidationError
-
 from src.config.loader import compute_config_hash, load_niche_config
 from src.config.schema import NicheConfig
 

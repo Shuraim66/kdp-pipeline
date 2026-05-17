@@ -58,3 +58,7 @@ pretty = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+asyncio_mode = "auto"
+markers = [
+    "integration: exercises a live external API; needs FAL_KEY / ANTHROPIC_API_KEY",
+]

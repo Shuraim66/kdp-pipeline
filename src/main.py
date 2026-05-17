@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from src.config.loader import compute_config_hash, load_niche_config
 from src.db.pool import get_pool
+from src.utils.logging import configure_logging
 
 _ALEMBIC_INI = Path(__file__).resolve().parent.parent / "alembic.ini"
 
@@ -29,6 +30,7 @@ def alembic_config() -> Config:
 @click.version_option("0.1.0", prog_name="kdp_pipeline")
 def cli() -> None:
     """KDP coloring book pipeline."""
+    configure_logging()
 
 
 @cli.command("init-db")

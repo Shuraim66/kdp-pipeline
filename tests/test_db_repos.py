@@ -23,7 +23,6 @@ def migrated_db() -> Iterator[None]:
     os.environ["DATABASE_URL"] = os.environ["DATABASE_URL_TEST"]
 
     from alembic import command
-
     from src.db import pool
     from src.main import alembic_config
     from src.settings import get_settings
