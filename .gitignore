@@ -1,0 +1,19 @@
+# Secrets
+.env
+
+# Generated output
+output/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Licensed assets — Phase 8 bundles Bebas Neue + Open Sans (SIL OFL,
+# redistributable). If those fonts get committed in-repo, remove this line.
+assets/fonts/
