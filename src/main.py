@@ -7,6 +7,7 @@ group; later phases add generation, QA, and assembly commands.
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import UUID
 
 import click
 from alembic import command
@@ -15,12 +16,13 @@ from alembic.script import ScriptDirectory
 from pydantic import ValidationError
 
 from src.config.loader import compute_config_hash, load_niche_config
-from src.db.models import BookNotFoundError
+from src.db.models import BookNotFoundError, BookStatus
 from src.db.pool import get_pool
 from src.db.repos.books import fail_book, get_book_by_id
-from src.db.repos.images import list_images
+from src.db.repos.images import count_by_status, list_images
 from src.generators.images import plan_generation, resolve_book, run_generation
 from src.providers.fal import cost_for_image, get_fal_provider
+from src.qa.runner import apply_manual_verdict, build_review_html, run_qa
 from src.settings import get_settings
 from src.utils.logging import configure_logging
 
@@ -182,6 +184,80 @@ def generate_images(target: str, test_images: int | None, yes: bool) -> None:
             f"Test mode — review {output_dir / book.slug / 'images' / 'raw'}, then "
             "re-run without --test-images for the full batch."
         )
+
+
+@cli.command("run-qa")
+@click.argument("slug")
+def run_qa_command(slug: str) -> None:
+    """Run image QA for a book — evaluate pages, regenerate rejects, finalise."""
+    try:
+        book, config = resolve_book(slug)
+    except (BookNotFoundError, ValidationError, ValueError) as exc:
+        click.echo(f"ERROR — {exc}", err=True)
+        raise SystemExit(1) from exc
+    if book.status not in (BookStatus.GENERATION_DONE, BookStatus.QA_RUNNING):
+        click.echo(
+            f"ERROR — book is '{book.status}'; QA needs status 'generation_done'.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    try:
+        report = run_qa(
+            book,
+            config,
+            provider_factory=get_fal_provider,
+            output_dir=get_settings().output_dir,
+        )
+    except RuntimeError as exc:
+        click.echo(f"ERROR — {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    click.echo(f"QA rounds:   {report.rounds}")
+    if report.regenerated:
+        click.echo(f"Regenerated: {report.regenerated}")
+    for status, count in sorted(report.counts.items()):
+        click.echo(f"  {status}: {count}")
+    click.echo(f"Status:      {report.final_status}")
+
+
+@cli.command("review-qa")
+@click.argument("slug")
+def review_qa_command(slug: str) -> None:
+    """Summarise QA, write qa_review.html, and take manual approve/reject."""
+    try:
+        book, _config = resolve_book(slug)
+    except (BookNotFoundError, ValidationError, ValueError) as exc:
+        click.echo(f"ERROR — {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    images = list_images(book.id)
+    if not images:
+        click.echo("No images yet — run `generate-images` first.")
+        return
+
+    click.echo(f"QA summary for {book.slug}:")
+    for status, count in sorted(count_by_status(book.id).items()):
+        click.echo(f"  {status}: {count}")
+    html_path = build_review_html(book, images, get_settings().output_dir)
+    click.echo(f"Review grid: {html_path}")
+    click.echo("Commands: approve <image_id> | reject <image_id> | quit")
+    while True:
+        line = click.prompt("review", default="quit", show_default=False).strip()
+        if line in ("quit", "q", ""):
+            break
+        parts = line.split()
+        if len(parts) != 2 or parts[0] not in ("approve", "reject"):
+            click.echo("  usage: approve <image_id> | reject <image_id> | quit")
+            continue
+        action, raw_id = parts
+        try:
+            image_id = UUID(raw_id)
+        except ValueError:
+            click.echo(f"  not a valid image id: {raw_id}")
+            continue
+        apply_manual_verdict(image_id, approve=action == "approve")
+        click.echo(f"  {action}d {image_id}")
 
 
 if __name__ == "__main__":

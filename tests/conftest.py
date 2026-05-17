@@ -24,6 +24,68 @@ def niche_config() -> NicheConfig:
 
 
 @pytest.fixture
+def make_niche_config() -> Callable[..., NicheConfig]:
+    """Factory for a small valid NicheConfig — tune dimensions and slot count."""
+
+    def _make(
+        *,
+        dimensions: tuple[int, int] = (64, 64),
+        subjects: int = 12,
+        variations: int = 2,
+        max_retries: int = 2,
+    ) -> NicheConfig:
+        data: dict[str, object] = {
+            "slug": "qa_test_v1",
+            "niche": "testing",
+            "book": {
+                "trim_size": "8.5x8.5",
+                "page_count": subjects * variations,
+                "price_usd": 9.99,
+                "target_audience": "testers",
+            },
+            "style": {
+                "art_style": "bold and easy line art",
+                "line_weight": "very thick",
+                "negative_prompts": "shading, gray, color",
+            },
+            "subjects": [f"test subject {i}" for i in range(subjects)],
+            "variations_per_subject": variations,
+            "composition_modifiers": ["centered composition", "diagonal composition"],
+            "metadata": {
+                "title_seed": "Test Coloring Book",
+                "subtitle_seed": "Designs",
+                "keywords_seed": ["test coloring book", "test gifts"],
+                "categories": ["Books > A > B", "Books > C > D"],
+            },
+            "cover": {
+                "background_color": "#1a3a52",
+                "accent_color": "#f4d35e",
+                "text_color": "#ffffff",
+                "hero_subject": "a test hero illustration",
+                "hero_style": "flat vector",
+                "font_family": "Bebas Neue",
+            },
+            "generation": {
+                "model": "fal-ai/flux/schnell",
+                "image_dimensions": list(dimensions),
+                "num_inference_steps": 4,
+                "guidance_scale": 0.0,
+                "fixed_seed": None,
+            },
+            "qa": {
+                "min_white_pct": 90.0,
+                "max_gray_pct": 3.0,
+                "required_white_margin_px": 4,
+                "required_dimensions": list(dimensions),
+                "max_retries_per_slot": max_retries,
+            },
+        }
+        return NicheConfig.model_validate(data)
+
+    return _make
+
+
+@pytest.fixture
 def make_book() -> Callable[..., Book]:
     """Factory for a `Book` with sane defaults; override any field by kwarg."""
 
