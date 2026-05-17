@@ -6,9 +6,11 @@
 
 from __future__ import annotations
 
+import io
 from unittest.mock import Mock, call
 from uuid import uuid4
 
+from PIL import Image
 from src.db.models import BookStatus, ImageQAStatus
 from src.generators.images import (
     execute_plan,
@@ -18,7 +20,18 @@ from src.generators.images import (
 )
 from src.providers.fal import FalImageResult, cost_for_image
 
-_PNG = b"\x89PNG\r\n\x1a\n" + b"fake-image-data"
+
+def _line_art_png() -> bytes:
+    """A small but valid line-art PNG — the generation flow now normalises it."""
+    image = Image.new("L", (64, 64), color=255)
+    for y in range(16, 48):
+        image.putpixel((32, y), 0)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+_PNG = _line_art_png()
 
 
 class _FakeFal:

@@ -82,13 +82,17 @@ cover:
   font_family: "Bebas Neue"
 
 generation:
+  # FLUX schnell caps output at 2048 px; request that directly so the cost
+  # estimate is accurate. The post-process upscales to required_dimensions.
   model: "fal-ai/flux/schnell"
-  image_dimensions: [2550, 2550]
+  image_dimensions: [2048, 2048]
   num_inference_steps: 4
   guidance_scale: 0.0
   fixed_seed: null
 
 qa:
+  # required_dimensions is the post-process target: 2550 px / 8" safe area
+  # = 318 DPI, clearing KDP's 300-DPI minimum.
   min_white_pct: 90.0
   max_gray_pct: 3.0
   required_white_margin_px: 75

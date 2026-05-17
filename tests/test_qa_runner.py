@@ -37,9 +37,14 @@ def _encode(array: np.ndarray) -> bytes:
 
 
 def _clean_png(width: int, height: int) -> bytes:
-    """A white page with a centred black bar — passes QA."""
+    """A white page with a small centred black bar — passes QA.
+
+    Kept well under the 10% ink ceiling so it still clears the white-pct gate
+    after line-art normalisation dilates the strokes during regeneration.
+    """
     array = np.full((height, width, 3), 255, dtype=np.uint8)
-    array[height // 2 - 2 : height // 2 + 2, 8 : width - 8] = 0
+    cy, cx, half = height // 2, width // 2, width // 4
+    array[cy - 1 : cy + 1, cx - half : cx + half] = 0
     return _encode(array)
 
 

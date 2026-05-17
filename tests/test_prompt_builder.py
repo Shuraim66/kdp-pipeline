@@ -20,9 +20,31 @@ def test_prompt_contains_subject_and_style(niche_config) -> None:
     assert "isolated on pure white background" in prompt
 
 
-def test_negative_prompt_is_the_style_value(niche_config) -> None:
+def test_prompt_front_loads_line_weight(niche_config) -> None:
+    prompt, _ = build_image_prompt(niche_config, "a teddy bear", 0)
+    assert prompt.startswith("thick black outlines")
+    assert "thick continuous black lines 4-6 pixels wide" in prompt
+    assert "in the style of a children's coloring book" in prompt
+
+
+def test_prompt_enforces_connected_outlines(niche_config) -> None:
+    prompt, _ = build_image_prompt(niche_config, "a teddy bear", 0)
+    assert "fully connected outlines" in prompt
+    assert "single coherent illustration" in prompt
+
+
+def test_negative_prompt_strengthens_the_style_value(niche_config) -> None:
     _, negative = build_image_prompt(niche_config, "anything", 3)
-    assert negative == niche_config.style.negative_prompts
+    # The niche's own negatives are preserved, with line-quality terms appended.
+    assert niche_config.style.negative_prompts.strip() in negative
+    for term in (
+        "thin lines",
+        "hairline strokes",
+        "broken lines",
+        "disconnected pieces",
+        "floating artifacts",
+    ):
+        assert term in negative
 
 
 def test_modifier_cycles_through_variations(niche_config) -> None:

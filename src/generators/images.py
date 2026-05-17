@@ -34,6 +34,7 @@ from src.db.repos.books import create_book, get_book_by_slug, transition_status
 from src.db.repos.images import create_image
 from src.providers.fal import FalProvider
 from src.utils.hashing import sha256_bytes
+from src.utils.line_art import normalize_line_art
 from src.utils.logging import logger
 from src.utils.prompts import build_image_prompt
 
@@ -199,14 +200,25 @@ async def _generate_one(
         book_id=book.id,
     )
 
+    # The model emits thin antialiased strokes at its own (capped) resolution;
+    # normalise to crisp bold line art at the QA-required print resolution.
+    processed = await asyncio.to_thread(
+        normalize_line_art,
+        result.image_bytes,
+        target_size=config.qa.required_dimensions,
+    )
+
     filename = f"{planned.slot.sequence_num:03d}_attempt{planned.retry_attempt}.png"
     path = raw_dir / filename
-    await asyncio.to_thread(path.write_bytes, result.image_bytes)
+    await asyncio.to_thread(path.write_bytes, processed)
 
+    final_width, final_height = config.qa.required_dimensions
     generation_params = {
         "model": generation.model,
-        "width": result.width,
-        "height": result.height,
+        "width": final_width,
+        "height": final_height,
+        "model_output_width": result.width,
+        "model_output_height": result.height,
         "num_inference_steps": generation.num_inference_steps,
         "guidance_scale": generation.guidance_scale,
         "subject": planned.slot.subject,
@@ -222,7 +234,7 @@ async def _generate_one(
         generation_params,
         negative_prompt=planned.negative_prompt,
         local_path=str(path),
-        file_sha256=sha256_bytes(result.image_bytes),
+        file_sha256=sha256_bytes(processed),
         cost_usd=result.cost_usd,
         retry_of_image_id=planned.retry_of_image_id,
         retry_attempt=planned.retry_attempt,
