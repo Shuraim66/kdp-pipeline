@@ -18,12 +18,15 @@ from pydantic import ValidationError
 from src.config.loader import compute_config_hash, load_niche_config
 from src.db.models import BookNotFoundError, BookStatus
 from src.db.pool import get_pool
-from src.db.repos.books import fail_book, get_book_by_id
+from src.db.repos.books import fail_book, get_book_by_id, transition_status
 from src.db.repos.images import count_by_status, list_images
 from src.generators.images import plan_generation, resolve_book, run_generation
+from src.generators.interior import build_interior_pdf
 from src.providers.fal import cost_for_image, get_fal_provider
+from src.qa.pdf_qa import check_interior_pdf
 from src.qa.runner import apply_manual_verdict, build_review_html, run_qa
 from src.settings import get_settings
+from src.utils.kdp_specs import interior_layout
 from src.utils.logging import configure_logging
 
 _ALEMBIC_INI = Path(__file__).resolve().parent.parent / "alembic.ini"
@@ -258,6 +261,65 @@ def review_qa_command(slug: str) -> None:
             continue
         apply_manual_verdict(image_id, approve=action == "approve")
         click.echo(f"  {action}d {image_id}")
+
+
+@cli.command("build-interior")
+@click.argument("slug")
+@click.option(
+    "--author",
+    default="Pen Name",
+    help="Author name for the title page (placeholder until the pen name is set).",
+)
+def build_interior_command(slug: str, author: str) -> None:
+    """Assemble the print-ready interior PDF from a book's filtered images."""
+    try:
+        book, config = resolve_book(slug)
+    except (BookNotFoundError, ValidationError, ValueError) as exc:
+        click.echo(f"ERROR — {exc}", err=True)
+        raise SystemExit(1) from exc
+    if book.status not in (BookStatus.QA_DONE, BookStatus.ASSEMBLING):
+        click.echo(
+            f"ERROR — book is '{book.status}'; interior assembly needs 'qa_done'.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    output_dir = get_settings().output_dir
+    filtered = sorted((output_dir / book.slug / "images" / "filtered").glob("*.png"))
+    if not filtered:
+        click.echo(
+            "ERROR — no filtered images; run `run-qa` first to produce them.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    if book.status == BookStatus.QA_DONE:
+        transition_status(book.id, BookStatus.ASSEMBLING)
+
+    pdf_path = output_dir / book.slug / "pdf" / "interior.pdf"
+    build_interior_pdf(
+        book,
+        config,
+        filtered_images=filtered,
+        output_path=pdf_path,
+        author=author,
+    )
+    layout = interior_layout(config.book.trim_size)
+    result = check_interior_pdf(pdf_path, expected_pages=len(filtered) + 2, layout=layout)
+
+    click.echo(f"Interior PDF: {pdf_path}")
+    click.echo(f"  pages:      {result.page_count} (expected {result.expected_pages})")
+    click.echo(f"  dimensions: {'ok' if result.dimensions_ok else 'WRONG'}")
+    click.echo(f"  min DPI:    {result.min_image_dpi:.0f}")
+    click.echo(f"  file size:  {result.file_size_mb:.1f} MB")
+    click.echo(f"  fonts:      {'embedded' if result.fonts_embedded else 'NOT embedded'}")
+    if result.passed:
+        click.echo("QA: PASSED")
+    else:
+        click.echo("QA: FAILED", err=True)
+        for issue in result.issues:
+            click.echo(f"  - {issue}", err=True)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
