@@ -21,7 +21,13 @@ from pydantic import ValidationError
 
 from src.config.loader import compute_config_hash, load_niche_config
 from src.config.schema import NicheConfig
-from src.db.models import Book, BookNotFoundError, BookStatus, IllegalTransitionError
+from src.db.models import (
+    Book,
+    BookNotFoundError,
+    BookStatus,
+    IllegalTransitionError,
+    ImageQAStatus,
+)
 from src.db.pool import get_pool
 from src.db.repos.api_calls import (
     cost_breakdown_for_book,
@@ -38,7 +44,7 @@ from src.db.repos.books import (
     set_asin,
     transition_status,
 )
-from src.db.repos.images import count_by_status, list_images
+from src.db.repos.images import count_by_status, list_images, update_qa_status
 from src.generators.cover import build_all_covers, generate_hero
 from src.generators.images import plan_generation, resolve_book, run_generation
 from src.generators.interior import build_interior_pdf
@@ -47,6 +53,7 @@ from src.providers.anthropic import get_anthropic_provider
 from src.providers.fal import cost_for_image, get_fal_provider
 from src.qa.pdf_qa import check_cover_pdf, check_interior_pdf
 from src.qa.runner import apply_manual_verdict, build_review_html, run_qa
+from src.qa.vision_qa import DEFAULT_PASS_THRESHOLD, build_vision_qa_summary
 from src.settings import get_settings
 from src.utils.kdp_specs import (
     POINTS_PER_INCH,
@@ -238,12 +245,15 @@ def run_qa_command(slug: str) -> None:
             config,
             provider_factory=get_fal_provider,
             output_dir=get_settings().output_dir,
+            vision_provider_factory=get_anthropic_provider,
         )
     except RuntimeError as exc:
         click.echo(f"ERROR — {exc}", err=True)
         raise SystemExit(1) from exc
 
     click.echo(f"QA rounds:   {report.rounds}")
+    if report.vision_rejected:
+        click.echo(f"Vision QA rejected: {report.vision_rejected}")
     if report.regenerated:
         click.echo(f"Regenerated: {report.regenerated}")
     for status, count in sorted(report.counts.items()):
@@ -288,6 +298,48 @@ def review_qa_command(slug: str) -> None:
             continue
         apply_manual_verdict(image_id, approve=action == "approve")
         click.echo(f"  {action}d {image_id}")
+
+
+@cli.command("show-vision-qa")
+@click.argument("slug")
+def show_vision_qa_command(slug: str) -> None:
+    """Print a book's Vision QA score distribution, top issues, and cost."""
+    book = get_book_by_slug(slug)
+    if book is None:
+        click.echo(f"ERROR — no book with slug {slug!r}.", err=True)
+        raise SystemExit(1)
+    summary = build_vision_qa_summary(book.slug, list_images(book.id), DEFAULT_PASS_THRESHOLD)
+    click.echo(summary)
+
+
+@cli.command("tune-vision-threshold")
+@click.argument("slug")
+@click.argument("new_threshold", type=click.IntRange(0, 100))
+def tune_vision_threshold_command(slug: str, new_threshold: int) -> None:
+    """Re-apply Vision QA pass/fail at a new threshold — no regeneration.
+
+    Only pages with a purely score-based verdict move: a passed page or one
+    rejected as `rejected_vision_lowscore`. Pages rejected for a specific
+    fault (subject, anatomy, composition, lines) keep that verdict.
+    """
+    book = get_book_by_slug(slug)
+    if book is None:
+        click.echo(f"ERROR — no book with slug {slug!r}.", err=True)
+        raise SystemExit(1)
+
+    movable = {ImageQAStatus.PASSED, ImageQAStatus.REJECTED_VISION_LOWSCORE}
+    changed = 0
+    for image in list_images(book.id):
+        if image.vision_qa_score is None or image.qa_status not in movable:
+            continue
+        should_pass = image.vision_qa_score >= new_threshold
+        if should_pass != (image.qa_status == ImageQAStatus.PASSED):
+            update_qa_status(
+                image.id,
+                ImageQAStatus.PASSED if should_pass else ImageQAStatus.REJECTED_VISION_LOWSCORE,
+            )
+            changed += 1
+    click.echo(f"{slug}: re-applied threshold {new_threshold} — {changed} verdict(s) changed.")
 
 
 @cli.command("build-interior")
@@ -635,13 +687,15 @@ def _run_build(yaml_path: str, *, assume_yes: bool, resume: bool, test_images: i
                     config,
                     provider_factory=get_fal_provider,
                     output_dir=output_dir,
+                    vision_provider_factory=get_anthropic_provider,
                 )
             except RuntimeError as exc:
                 click.echo(f"ERROR — {exc}", err=True)
                 raise SystemExit(1) from exc
             click.echo(
-                f"  QA rounds {qa_report.rounds}, "
-                f"regenerated {qa_report.regenerated}, status {qa_report.final_status}"
+                f"  QA rounds {qa_report.rounds}, regenerated {qa_report.regenerated} "
+                f"(vision QA rejected {qa_report.vision_rejected}), "
+                f"status {qa_report.final_status}"
             )
             ran_qa = True
 

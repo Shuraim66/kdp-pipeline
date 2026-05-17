@@ -36,6 +36,12 @@ class ImageQAStatus(enum.StrEnum):
     REJECTED_MARGINS = "rejected_margins"
     REJECTED_RESOLUTION = "rejected_resolution"
     REJECTED_MANUAL = "rejected_manual"
+    # Vision QA verdicts — semantic failures the pixel checks cannot see.
+    REJECTED_VISION_SUBJECT = "rejected_vision_subject"
+    REJECTED_VISION_COMPOSITION = "rejected_vision_composition"
+    REJECTED_VISION_LINES = "rejected_vision_lines"
+    REJECTED_VISION_ANATOMY = "rejected_vision_anatomy"
+    REJECTED_VISION_LOWSCORE = "rejected_vision_lowscore"
 
 
 # The state machine: allowed `current -> {targets}` book status transitions.
@@ -123,6 +129,14 @@ class Image:
     retry_of_image_id: UUID | None
     retry_attempt: int
     created_at: datetime
+    # Vision QA fields — populated by the vision QA stage; null until then.
+    vision_qa_score: int | None = None
+    vision_qa_subscores: dict[str, Any] | None = None
+    vision_qa_issues: list[str] | None = None
+    vision_qa_prompt_hint: str | None = None
+    vision_qa_model: str | None = None
+    vision_qa_cost_usd: Decimal | None = None
+    vision_qa_evaluated_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -252,6 +252,25 @@ async def test_anthropic_generate_text_bad_request_not_retried(
     assert [r["success"] for r in logged] == [False]
 
 
+async def test_anthropic_generate_vision_sends_image_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("src.providers.anthropic.log_api_call", _noop_log)
+    provider = AnthropicProvider(api_key="test", max_concurrent=1)
+    create = AsyncMock(return_value=_fake_message('{"score": 90}', 2000, 120))
+    monkeypatch.setattr(provider._client.messages, "create", create)
+
+    result = await provider.generate_vision(prompt="grade this page", image_bytes=_PNG)
+
+    assert result.text == '{"score": 90}'
+    assert result.input_tokens == 2000
+    # One user message carrying an image block followed by the text prompt.
+    blocks = create.call_args.kwargs["messages"][0]["content"]
+    assert [block["type"] for block in blocks] == ["image", "text"]
+    assert blocks[0]["source"]["media_type"] == "image/png"
+    assert blocks[1]["text"] == "grade this page"
+
+
 # --- Integration: one live call per provider ---------------------------------
 
 

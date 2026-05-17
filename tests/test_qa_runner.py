@@ -7,6 +7,7 @@ bytes so regeneration writes real, re-evaluable files without a network call.
 from __future__ import annotations
 
 import io
+import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -19,6 +20,7 @@ from PIL import Image as PILImage
 from src.db.models import Book, Image, ImageQAStatus
 from src.db.models import BookStatus as BS
 from src.generators.images import expand_slots
+from src.providers.anthropic import AnthropicResult
 from src.providers.fal import FalImageResult
 from src.qa.runner import (
     apply_manual_verdict,
@@ -96,6 +98,30 @@ class _Store:
     def update_qa(self, image_id: UUID, status: ImageQAStatus, metrics: object = None) -> None:
         self._by_id[image_id] = replace(self._by_id[image_id], qa_status=status, qa_metrics=metrics)
 
+    def update_qa_status(self, image_id: UUID, status: ImageQAStatus) -> None:
+        self._by_id[image_id] = replace(self._by_id[image_id], qa_status=status)
+
+    def update_vision_qa(
+        self,
+        image_id: UUID,
+        *,
+        score: int,
+        subscores: dict[str, int],
+        issues: list[str],
+        prompt_hint: str | None,
+        model: str,
+        cost_usd: Decimal,
+    ) -> None:
+        self._by_id[image_id] = replace(
+            self._by_id[image_id],
+            vision_qa_score=score,
+            vision_qa_subscores=subscores,
+            vision_qa_issues=issues,
+            vision_qa_prompt_hint=prompt_hint,
+            vision_qa_model=model,
+            vision_qa_cost_usd=cost_usd,
+        )
+
     def create_image(
         self,
         book_id: UUID,
@@ -133,7 +159,70 @@ class _Store:
 def _install_store(monkeypatch, store: _Store) -> None:
     monkeypatch.setattr("src.qa.runner.list_images", store.list_images)
     monkeypatch.setattr("src.qa.runner.update_qa", store.update_qa)
+    monkeypatch.setattr("src.qa.runner.update_qa_status", store.update_qa_status)
+    monkeypatch.setattr("src.qa.runner.update_vision_qa", store.update_vision_qa)
     monkeypatch.setattr("src.generators.images.create_image", store.create_image)
+
+
+def _vision_reply(*, passed: bool) -> str:
+    """A canned Vision QA JSON reply — a clear pass or a clear sub-threshold fail."""
+    if passed:
+        subscores = {
+            "subject_recognition": 38,
+            "composition_coherence": 23,
+            "line_quality": 14,
+            "anatomy_accuracy": 9,
+            "whitespace_balance": 9,
+        }
+    else:
+        subscores = {
+            "subject_recognition": 18,
+            "composition_coherence": 15,
+            "line_quality": 10,
+            "anatomy_accuracy": 7,
+            "whitespace_balance": 7,
+        }
+    return json.dumps(
+        {
+            **subscores,
+            "total_score": sum(subscores.values()),
+            "red_flags": [],
+            "primary_failure": "none" if passed else "subject",
+            "issues": [] if passed else ["subject not recognizable"],
+            "prompt_hint": None,
+            "passed": passed,
+        }
+    )
+
+
+class _FakeAnthropic:
+    """A stand-in AnthropicProvider for Vision QA — optionally fails call #1."""
+
+    def __init__(self, *, fail_first: bool = False) -> None:
+        self._fail_first = fail_first
+        self.calls = 0
+
+    async def generate_vision(
+        self,
+        *,
+        prompt: str,
+        image_bytes: bytes,
+        system: str | None = None,
+        max_tokens: int = 1024,
+        operation: str = "generate_vision",
+        model: str | None = None,
+        book_id: object = None,
+    ) -> AnthropicResult:
+        self.calls += 1
+        passed = not (self._fail_first and self.calls == 1)
+        return AnthropicResult(
+            text=_vision_reply(passed=passed),
+            input_tokens=2000,
+            output_tokens=300,
+            cost_usd=Decimal("0.012"),
+            duration_s=0.5,
+            stop_reason="end_turn",
+        )
 
 
 def _seed_images(config, book: Book, output_dir: Path, failing, make_image) -> list[Image]:
@@ -235,6 +324,72 @@ def test_run_qa_fails_book_when_slot_exhausts_retries(
     assert fail.call_args.kwargs["phase"] == "qa"
     # The book never reaches qa_done.
     assert BS.QA_DONE not in [c.args[1] for c in transition.call_args_list]
+
+
+# --- vision QA ---------------------------------------------------------------
+
+
+def test_run_qa_vision_grades_every_passing_page(
+    make_niche_config, make_book, make_image, tmp_path, monkeypatch
+) -> None:
+    config = make_niche_config()
+    book = make_book(slug=_SLUG, status=BS.GENERATION_DONE)
+    store = _Store(_seed_images(config, book, tmp_path, frozenset(), make_image))
+    _install_store(monkeypatch, store)
+    monkeypatch.setattr("src.qa.runner.transition_status", Mock())
+    monkeypatch.setattr("src.qa.runner.fail_book", Mock())
+    fake_anthropic = _FakeAnthropic()
+
+    def _no_fal() -> object:
+        raise AssertionError("Fal provider must not be built when nothing regenerates")
+
+    report = run_qa(
+        book,
+        config,
+        provider_factory=_no_fal,
+        output_dir=tmp_path,
+        vision_provider_factory=lambda: fake_anthropic,
+    )
+
+    assert report.final_status == BS.QA_DONE
+    assert report.vision_rejected == 0
+    assert report.regenerated == 0
+    # Every pixel-passed page was vision-graded exactly once.
+    images = store.list_images(book.id)
+    assert all(image.vision_qa_score is not None for image in images)
+    assert fake_anthropic.calls == config.book.page_count
+
+
+def test_run_qa_vision_rejection_triggers_regeneration(
+    make_niche_config, make_book, make_image, tmp_path, monkeypatch
+) -> None:
+    config = make_niche_config()
+    width, height = config.generation.image_dimensions
+    book = make_book(slug=_SLUG, status=BS.GENERATION_DONE)
+    store = _Store(_seed_images(config, book, tmp_path, frozenset(), make_image))
+    _install_store(monkeypatch, store)
+    monkeypatch.setattr("src.qa.runner.transition_status", Mock())
+    fail = Mock()
+    monkeypatch.setattr("src.qa.runner.fail_book", fail)
+    fal = _FakeFal(_clean_png(width, height))
+    # The first vision evaluation fails on subject; the rest — and the
+    # regenerated retry — pass.
+    fake_anthropic = _FakeAnthropic(fail_first=True)
+
+    report = run_qa(
+        book,
+        config,
+        provider_factory=lambda: fal,
+        output_dir=tmp_path,
+        vision_provider_factory=lambda: fake_anthropic,
+    )
+
+    assert report.final_status == BS.QA_DONE
+    assert report.vision_rejected == 1
+    assert report.regenerated == 1
+    fail.assert_not_called()
+    filtered = tmp_path / _SLUG / "images" / "filtered"
+    assert len(list(filtered.iterdir())) == config.book.page_count
 
 
 # --- filtered output, review HTML, manual verdict ----------------------------

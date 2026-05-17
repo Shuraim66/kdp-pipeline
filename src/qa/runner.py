@@ -21,9 +21,11 @@ from uuid import UUID
 from src.config.schema import NicheConfig, QASpec
 from src.db.models import Book, BookStatus, Image, ImageQAStatus
 from src.db.repos.books import fail_book, transition_status
-from src.db.repos.images import list_images, update_qa
+from src.db.repos.images import list_images, update_qa, update_qa_status, update_vision_qa
 from src.generators.images import execute_plan, plan_generation
+from src.providers.anthropic import AnthropicProvider
 from src.providers.fal import FalProvider
+from src.qa import vision_qa
 from src.qa.image_qa import evaluate_image
 from src.utils.logging import logger
 
@@ -36,6 +38,7 @@ class QAReport:
     regenerated: int
     counts: dict[str, int]
     final_status: BookStatus
+    vision_rejected: int = 0
 
 
 def _counts(images: list[Image]) -> dict[str, int]:
@@ -68,26 +71,113 @@ def _qa_pending(book_id: UUID, qa: QASpec) -> int:
     return len(pending)
 
 
+async def _vision_evaluate_all(
+    images: list[Image],
+    config: NicheConfig,
+    provider: AnthropicProvider,
+) -> list[tuple[Image, vision_qa.VisionQAResult | None]]:
+    """Grade each pixel-passed page concurrently; an error isolates to a None."""
+
+    async def _one(image: Image) -> tuple[Image, vision_qa.VisionQAResult | None]:
+        assert image.local_path is not None  # callers filter to images with a file
+        subject = str(image.generation_params.get("subject") or image.prompt)
+        try:
+            result = await vision_qa.evaluate_image(
+                Path(image.local_path),
+                subject=subject,
+                sequence_num=image.sequence_num,
+                config=config,
+                provider=provider,
+                book_id=image.book_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "vision QA could not evaluate slot {}: {}: {}",
+                image.sequence_num,
+                type(exc).__name__,
+                exc,
+            )
+            return image, None
+        return image, result
+
+    return list(await asyncio.gather(*(_one(image) for image in images)))
+
+
+def _vision_qa_round(book: Book, config: NicheConfig, provider: AnthropicProvider) -> int:
+    """Vision-grade every page that passed pixel QA but is not yet graded.
+
+    A rejection flips the image to a `rejected_vision_*` status, which the
+    generation planner already treats as a retryable slot. Returns the count
+    rejected this round.
+    """
+    candidates = [
+        image
+        for image in list_images(book.id)
+        if image.qa_status == ImageQAStatus.PASSED
+        and image.vision_qa_score is None
+        and image.local_path is not None
+    ]
+    if not candidates:
+        return 0
+
+    logger.info("vision QA: grading {} page(s)", len(candidates))
+    evaluated = asyncio.run(_vision_evaluate_all(candidates, config, provider))
+    rejected = 0
+    for image, result in evaluated:
+        if result is None:
+            continue  # API error — leave the page passed; a re-run retries it
+        update_vision_qa(
+            image.id,
+            score=result.score,
+            subscores=result.subscores,
+            issues=result.issues,
+            prompt_hint=result.prompt_hint,
+            model=vision_qa.VISION_QA_MODEL,
+            cost_usd=result.cost_usd,
+        )
+        if not result.passed:
+            assert result.rejection_reason is not None  # always set when not passed
+            update_qa_status(image.id, result.rejection_reason)
+            rejected += 1
+            logger.debug(
+                "vision QA rejected slot {}: {} (score {})",
+                image.sequence_num,
+                result.rejection_reason,
+                result.score,
+            )
+    return rejected
+
+
 def run_qa(
     book: Book,
     config: NicheConfig,
     *,
     provider_factory: Callable[[], FalProvider],
     output_dir: Path,
+    vision_provider_factory: Callable[[], AnthropicProvider] | None = None,
 ) -> QAReport:
     """Evaluate a book's pages, regenerating rejected slots until settled.
 
     `provider_factory` is called lazily — only when a round actually needs to
     regenerate — so QA on an all-passing book never touches the Fal provider.
+    When `vision_provider_factory` is given, each round also runs Vision QA on
+    the pages that just passed pixel QA; its rejections feed the same retry
+    loop. The vision provider is built once, up front, so a missing API key
+    fails before the book moves to `qa_running`.
     """
+    vision_provider = vision_provider_factory() if vision_provider_factory is not None else None
+
     if book.status == BookStatus.GENERATION_DONE:
         transition_status(book.id, BookStatus.QA_RUNNING)
 
     rounds = 0
     regenerated = 0
+    vision_rejected = 0
     for _ in range(config.qa.max_retries_per_slot + 2):
         rounds += 1
         _qa_pending(book.id, config.qa)
+        if vision_provider is not None:
+            vision_rejected += _vision_qa_round(book, config, vision_provider)
         plan = plan_generation(config, list_images(book.id))
         if not plan.to_generate:
             break
@@ -107,12 +197,12 @@ def run_qa(
         seqs = ", ".join(f"{slot.sequence_num:03d}" for slot in final_plan.exhausted)
         fail_book(book.id, phase="qa", reason=f"slots failed QA after retries: {seqs}")
         logger.warning("QA failed book {} — exhausted slots: {}", book.slug, seqs)
-        return QAReport(rounds, regenerated, counts, BookStatus.FAILED)
+        return QAReport(rounds, regenerated, counts, BookStatus.FAILED, vision_rejected)
 
     transition_status(book.id, BookStatus.QA_DONE)
     copied = copy_filtered_images(book, final_images, output_dir)
     logger.info("QA done for {} — {} pages copied to filtered/", book.slug, copied)
-    return QAReport(rounds, regenerated, counts, BookStatus.QA_DONE)
+    return QAReport(rounds, regenerated, counts, BookStatus.QA_DONE, vision_rejected)
 
 
 def copy_filtered_images(book: Book, images: list[Image], output_dir: Path) -> int:

@@ -9,6 +9,7 @@ JSON-only instruction on top of `generate_text` for structured calls.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import time
 from dataclasses import dataclass
@@ -109,26 +110,26 @@ class AnthropicProvider:
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._model = model
 
-    async def generate_text(
+    async def _send(
         self,
         *,
-        prompt: str,
-        system: str | None = None,
-        max_tokens: int = 1024,
-        operation: str = "generate_text",
-        model: str | None = None,
-        book_id: UUID | None = None,
+        messages: list[anthropic.types.MessageParam],
+        system: str | None,
+        max_tokens: int,
+        operation: str,
+        model: str | None,
+        book_id: UUID | None,
+        request_params: dict[str, Any],
     ) -> AnthropicResult:
-        """Send one Messages request, retrying transient errors, logging each."""
+        """Send one Messages request, retrying transient errors, logging each.
+
+        `messages` is pre-built by the caller — `generate_text` sends plain
+        string content, `generate_vision` sends an image block plus text.
+        `request_params` is logged verbatim to `api_calls`, so callers keep
+        bulky payloads (such as base64 image data) out of it.
+        """
         use_model = model or self._model
-        messages: list[anthropic.types.MessageParam] = [{"role": "user", "content": prompt}]
         system_arg: str | anthropic.Omit = system if system is not None else anthropic.omit
-        request_params: dict[str, Any] = {
-            "model": use_model,
-            "max_tokens": max_tokens,
-            "system": system,
-            "prompt": prompt,
-        }
 
         async with self._semaphore:
             async for attempt in make_async_retrying(_is_retryable, label="Anthropic"):
@@ -211,6 +212,77 @@ class AnthropicProvider:
                         stop_reason=message.stop_reason,
                     )
         raise AssertionError("unreachable: AsyncRetrying yielded no attempts")
+
+    async def generate_text(
+        self,
+        *,
+        prompt: str,
+        system: str | None = None,
+        max_tokens: int = 1024,
+        operation: str = "generate_text",
+        model: str | None = None,
+        book_id: UUID | None = None,
+    ) -> AnthropicResult:
+        """Send one text-only Messages request."""
+        messages: list[anthropic.types.MessageParam] = [{"role": "user", "content": prompt}]
+        request_params: dict[str, Any] = {
+            "model": model or self._model,
+            "max_tokens": max_tokens,
+            "system": system,
+            "prompt": prompt,
+        }
+        return await self._send(
+            messages=messages,
+            system=system,
+            max_tokens=max_tokens,
+            operation=operation,
+            model=model,
+            book_id=book_id,
+            request_params=request_params,
+        )
+
+    async def generate_vision(
+        self,
+        *,
+        prompt: str,
+        image_bytes: bytes,
+        system: str | None = None,
+        max_tokens: int = 1024,
+        operation: str = "generate_vision",
+        model: str | None = None,
+        book_id: UUID | None = None,
+    ) -> AnthropicResult:
+        """Send one Messages request with a PNG image plus a text prompt.
+
+        `image_bytes` must be PNG — the pipeline only ever evaluates the
+        line-art PNGs it produces. The base64 payload is kept out of the
+        logged `request_params`; only its byte length is recorded.
+        """
+        image_b64 = base64.standard_b64encode(image_bytes).decode("ascii")
+        image_block: anthropic.types.ImageBlockParam = {
+            "type": "image",
+            "source": {"type": "base64", "media_type": "image/png", "data": image_b64},
+        }
+        text_block: anthropic.types.TextBlockParam = {"type": "text", "text": prompt}
+        messages: list[anthropic.types.MessageParam] = [
+            {"role": "user", "content": [image_block, text_block]}
+        ]
+        request_params: dict[str, Any] = {
+            "model": model or self._model,
+            "max_tokens": max_tokens,
+            "system": system,
+            "prompt": prompt,
+            "image_png_bytes": len(image_bytes),
+        }
+        return await self._send(
+            messages=messages,
+            system=system,
+            max_tokens=max_tokens,
+            operation=operation,
+            model=model,
+            book_id=book_id,
+            request_params=request_params,
+        )
 
     async def generate_json(
         self,

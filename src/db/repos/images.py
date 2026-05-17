@@ -33,6 +33,13 @@ def _image_from_row(row: dict[str, Any]) -> Image:
         retry_of_image_id=row["retry_of_image_id"],
         retry_attempt=row["retry_attempt"],
         created_at=row["created_at"],
+        vision_qa_score=row.get("vision_qa_score"),
+        vision_qa_subscores=row.get("vision_qa_subscores"),
+        vision_qa_issues=row.get("vision_qa_issues"),
+        vision_qa_prompt_hint=row.get("vision_qa_prompt_hint"),
+        vision_qa_model=row.get("vision_qa_model"),
+        vision_qa_cost_usd=row.get("vision_qa_cost_usd"),
+        vision_qa_evaluated_at=row.get("vision_qa_evaluated_at"),
     )
 
 
@@ -101,6 +108,52 @@ def update_qa(
             "UPDATE images SET qa_status = %s::image_qa_status, "
             "qa_metrics = %s, qa_checked_at = now() WHERE id = %s",
             (qa_status, metrics, image_id),
+        )
+
+
+def update_qa_status(image_id: UUID, qa_status: ImageQAStatus) -> None:
+    """Set just an image's QA verdict — used by the vision QA override.
+
+    Unlike `update_qa`, this leaves `qa_metrics` untouched: the vision verdict
+    and its detail live in the dedicated `vision_qa_*` columns.
+    """
+    with (
+        get_pool().connection() as conn,
+        conn.transaction(),
+        conn.cursor() as cur,
+    ):
+        cur.execute(
+            "UPDATE images SET qa_status = %s::image_qa_status, qa_checked_at = now() "
+            "WHERE id = %s",
+            (qa_status, image_id),
+        )
+
+
+def update_vision_qa(
+    image_id: UUID,
+    *,
+    score: int,
+    subscores: dict[str, Any],
+    issues: list[str],
+    prompt_hint: str | None,
+    model: str,
+    cost_usd: Decimal,
+) -> None:
+    """Record an image's Vision QA score and detail.
+
+    Written for every evaluated image regardless of pass/fail; a rejection
+    additionally flips `qa_status` via `update_qa_status`.
+    """
+    with (
+        get_pool().connection() as conn,
+        conn.transaction(),
+        conn.cursor() as cur,
+    ):
+        cur.execute(
+            "UPDATE images SET vision_qa_score = %s, vision_qa_subscores = %s, "
+            "vision_qa_issues = %s, vision_qa_prompt_hint = %s, vision_qa_model = %s, "
+            "vision_qa_cost_usd = %s, vision_qa_evaluated_at = now() WHERE id = %s",
+            (score, Jsonb(subscores), issues, prompt_hint, model, cost_usd, image_id),
         )
 
 
