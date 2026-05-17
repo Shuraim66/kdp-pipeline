@@ -104,6 +104,20 @@ def update_qa(
         )
 
 
+def list_images(book_id: UUID) -> list[Image]:
+    """Return every image for a book, ordered by sequence then retry attempt."""
+    with (
+        get_pool().connection() as conn,
+        conn.cursor(row_factory=dict_row) as cur,
+    ):
+        cur.execute(
+            "SELECT * FROM images WHERE book_id = %s ORDER BY sequence_num, retry_attempt",
+            (book_id,),
+        )
+        rows = cur.fetchall()
+    return [_image_from_row(row) for row in rows]
+
+
 def get_passed_images(book_id: UUID) -> list[Image]:
     """Return a book's QA-passed images, ordered by sequence number."""
     with (
