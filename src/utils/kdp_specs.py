@@ -53,3 +53,49 @@ def interior_layout(trim_size: str) -> InteriorLayout:
         safe_width=trim_w - 2 * safe,
         safe_height=trim_h - 2 * safe,
     )
+
+
+# KDP wrap-cover spine factor — inches of spine per interior page, by stock.
+_SPINE_FACTOR_PER_PAGE = {"white": 0.002252, "cream": 0.0025, "color": 0.002347}
+COVER_DPI = 300
+
+
+@dataclass(frozen=True, slots=True)
+class CoverDimensions:
+    """Full wrap-cover geometry: back + spine + front, with bleed."""
+
+    total_width_in: float
+    total_height_in: float
+    spine_width_in: float
+    bleed_in: float
+    total_width_px: int
+    total_height_px: int
+
+
+def compute_cover_dimensions(
+    page_count: int,
+    trim_w_in: float,
+    trim_h_in: float,
+    *,
+    paper: str = "white",
+    dpi: int = COVER_DPI,
+) -> CoverDimensions:
+    """Compute KDP wrap-cover dimensions for a paperback.
+
+    `page_count` is the *interior* page count — the spine widens with it, by a
+    per-page factor that depends on the paper stock. Bleed (0.125") is added on
+    all four sides. Verify against KDP's cover calculator before a print run.
+    """
+    if paper not in _SPINE_FACTOR_PER_PAGE:
+        raise ValueError(f"unknown paper stock: {paper!r}")
+    spine = page_count * _SPINE_FACTOR_PER_PAGE[paper]
+    total_w = trim_w_in * 2 + spine + BLEED_IN * 2
+    total_h = trim_h_in + BLEED_IN * 2
+    return CoverDimensions(
+        total_width_in=total_w,
+        total_height_in=total_h,
+        spine_width_in=spine,
+        bleed_in=BLEED_IN,
+        total_width_px=round(total_w * dpi),
+        total_height_px=round(total_h * dpi),
+    )

@@ -35,6 +35,7 @@ def _valid_config() -> dict[str, Any]:
         "metadata": {
             "title_seed": "Test Coloring Book",
             "subtitle_seed": "24 Test Designs",
+            "author": "Test Press",
             "keywords_seed": ["test coloring book", "test gifts"],
             "categories": ["Books > A > B", "Books > C > D"],
         },

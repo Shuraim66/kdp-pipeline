@@ -64,6 +64,8 @@ composition_modifiers:
 metadata:
   title_seed: "Working Title: A Coloring Book"
   subtitle_seed: "24 Designs for a Calm Afternoon"
+  # author: the KDP author / pen name printed on the cover and interior.
+  author: "Quiet Hours Press"
   # keywords_seed: 1-7 entries (KDP provides 7 keyword slots).
   keywords_seed:
     - "primary keyword"

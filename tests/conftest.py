@@ -54,6 +54,7 @@ def make_niche_config() -> Callable[..., NicheConfig]:
             "metadata": {
                 "title_seed": "Test Coloring Book",
                 "subtitle_seed": "Designs",
+                "author": "Quiet Hours Press",
                 "keywords_seed": ["test coloring book", "test gifts"],
                 "categories": ["Books > A > B", "Books > C > D"],
             },

@@ -6,6 +6,7 @@ group; later phases add generation, QA, and assembly commands.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from uuid import UUID
 
@@ -20,13 +21,19 @@ from src.db.models import BookNotFoundError, BookStatus
 from src.db.pool import get_pool
 from src.db.repos.books import fail_book, get_book_by_id, transition_status
 from src.db.repos.images import count_by_status, list_images
+from src.generators.cover import build_all_covers, generate_hero
 from src.generators.images import plan_generation, resolve_book, run_generation
 from src.generators.interior import build_interior_pdf
 from src.providers.fal import cost_for_image, get_fal_provider
-from src.qa.pdf_qa import check_interior_pdf
+from src.qa.pdf_qa import check_cover_pdf, check_interior_pdf
 from src.qa.runner import apply_manual_verdict, build_review_html, run_qa
 from src.settings import get_settings
-from src.utils.kdp_specs import interior_layout
+from src.utils.kdp_specs import (
+    POINTS_PER_INCH,
+    compute_cover_dimensions,
+    interior_layout,
+    parse_trim_size,
+)
 from src.utils.logging import configure_logging
 
 _ALEMBIC_INI = Path(__file__).resolve().parent.parent / "alembic.ini"
@@ -267,10 +274,10 @@ def review_qa_command(slug: str) -> None:
 @click.argument("slug")
 @click.option(
     "--author",
-    default="Pen Name",
-    help="Author name for the title page (placeholder until the pen name is set).",
+    default=None,
+    help="Override the author name on the title page (defaults to the niche config).",
 )
-def build_interior_command(slug: str, author: str) -> None:
+def build_interior_command(slug: str, author: str | None) -> None:
     """Assemble the print-ready interior PDF from a book's filtered images."""
     try:
         book, config = resolve_book(slug)
@@ -302,7 +309,7 @@ def build_interior_command(slug: str, author: str) -> None:
         config,
         filtered_images=filtered,
         output_path=pdf_path,
-        author=author,
+        author=author if author is not None else config.metadata.author,
     )
     layout = interior_layout(config.book.trim_size)
     result = check_interior_pdf(pdf_path, expected_pages=len(filtered) + 2, layout=layout)
@@ -319,6 +326,72 @@ def build_interior_command(slug: str, author: str) -> None:
         click.echo("QA: FAILED", err=True)
         for issue in result.issues:
             click.echo(f"  - {issue}", err=True)
+        raise SystemExit(1)
+
+
+@cli.command("build-cover")
+@click.argument("slug")
+@click.option(
+    "--hero",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Use this image as the hero illustration instead of generating one.",
+)
+def build_cover_command(slug: str, hero: str | None) -> None:
+    """Build three print-ready cover variants for a book."""
+    try:
+        book, config = resolve_book(slug)
+    except (BookNotFoundError, ValidationError, ValueError) as exc:
+        click.echo(f"ERROR — {exc}", err=True)
+        raise SystemExit(1) from exc
+    if book.status not in (BookStatus.QA_DONE, BookStatus.ASSEMBLING):
+        click.echo(
+            f"ERROR — book is '{book.status}'; cover assembly needs 'qa_done'.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    output_dir = get_settings().output_dir
+    hero_path = Path(hero) if hero else output_dir / book.slug / "cover" / "hero.png"
+    if not hero_path.is_file():
+        click.echo("Generating hero illustration via Fal.ai FLUX dev …")
+        try:
+            provider = get_fal_provider()
+        except RuntimeError as exc:
+            click.echo(f"ERROR — {exc}", err=True)
+            raise SystemExit(1) from exc
+        asyncio.run(generate_hero(provider, config, output_path=hero_path))
+
+    if book.status == BookStatus.QA_DONE:
+        transition_status(book.id, BookStatus.ASSEMBLING)
+
+    interior_pages = config.book.page_count + 2
+    pdfs = build_all_covers(
+        book,
+        config,
+        hero_path=hero_path,
+        output_dir=output_dir,
+        interior_page_count=interior_pages,
+    )
+
+    trim_w, trim_h = parse_trim_size(config.book.trim_size)
+    dims = compute_cover_dimensions(interior_pages, trim_w, trim_h)
+    expected_w = dims.total_width_in * POINTS_PER_INCH
+    expected_h = dims.total_height_in * POINTS_PER_INCH
+
+    all_passed = True
+    for pdf in pdfs:
+        result = check_cover_pdf(pdf, expected_width_pt=expected_w, expected_height_pt=expected_h)
+        if result.passed:
+            click.echo(f"  {pdf.name}: QA ok")
+        else:
+            all_passed = False
+            click.echo(f"  {pdf.name}: QA FAILED — {'; '.join(result.issues)}", err=True)
+    click.echo(
+        f"3 cover variants in {output_dir / book.slug / 'pdf'} — "
+        "review and rename the winner to cover.pdf."
+    )
+    if not all_passed:
         raise SystemExit(1)
 
 

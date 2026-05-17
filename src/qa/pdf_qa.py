@@ -151,3 +151,51 @@ def check_interior_pdf(path: Path, *, expected_pages: int, layout: InteriorLayou
         opens_cleanly=True,
         issues=issues,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class CoverQAResult:
+    """The outcome of `check_cover_pdf`."""
+
+    page_count: int
+    width_pt: float
+    height_pt: float
+    dimensions_ok: bool
+    opens_cleanly: bool
+    issues: list[str]
+
+    @property
+    def passed(self) -> bool:
+        """Whether the cover PDF cleared every QA check."""
+        return not self.issues
+
+
+def check_cover_pdf(
+    path: Path, *, expected_width_pt: float, expected_height_pt: float
+) -> CoverQAResult:
+    """Verify a wrap-cover PDF: one page, matching the calculated dimensions."""
+    issues: list[str] = []
+    try:
+        reader = PdfReader(str(path))
+        page_count = len(reader.pages)
+    except Exception as exc:
+        issues.append(f"PDF failed to open: {exc}")
+        return CoverQAResult(0, 0.0, 0.0, False, False, issues)
+
+    if page_count != 1:
+        issues.append(f"cover has {page_count} pages, expected 1")
+    if page_count == 0:
+        return CoverQAResult(0, 0.0, 0.0, False, True, issues)
+
+    box = reader.pages[0].mediabox
+    width_pt, height_pt = float(box.width), float(box.height)
+    dimensions_ok = (
+        abs(width_pt - expected_width_pt) <= _DIMENSION_TOLERANCE_PT
+        and abs(height_pt - expected_height_pt) <= _DIMENSION_TOLERANCE_PT
+    )
+    if not dimensions_ok:
+        issues.append(
+            f"cover is {width_pt:.0f}x{height_pt:.0f}pt, expected "
+            f"{expected_width_pt:.0f}x{expected_height_pt:.0f}pt"
+        )
+    return CoverQAResult(page_count, width_pt, height_pt, dimensions_ok, True, issues)

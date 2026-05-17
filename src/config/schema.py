@@ -39,6 +39,7 @@ class MetadataSpec(_Strict):
 
     title_seed: str
     subtitle_seed: str
+    author: str
     keywords_seed: list[str] = Field(min_length=1, max_length=7)
     categories: list[str] = Field(min_length=2, max_length=2)
 
