@@ -75,6 +75,21 @@ def total_cost_for_book(book_id: UUID) -> Decimal:
     return Decimal(row[0])
 
 
+def cost_breakdown_for_book(book_id: UUID) -> dict[str, Decimal]:
+    """Return a book's API cost broken down by provider."""
+    with (
+        get_pool().connection() as conn,
+        conn.cursor() as cur,
+    ):
+        cur.execute(
+            "SELECT provider, COALESCE(SUM(cost_usd), 0) FROM api_calls "
+            "WHERE book_id = %s GROUP BY provider",
+            (book_id,),
+        )
+        rows = cur.fetchall()
+    return {str(provider): Decimal(total) for provider, total in rows}
+
+
 def total_cost_across_books(
     date_range: tuple[datetime, datetime] | None = None,
 ) -> Decimal:

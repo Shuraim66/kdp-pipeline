@@ -9,7 +9,10 @@ logging never blocks a command.
 
 from __future__ import annotations
 
+import contextlib
 import sys
+from collections.abc import Iterator
+from pathlib import Path
 
 from loguru import logger
 
@@ -42,4 +45,15 @@ def configure_logging() -> None:
     _configured = True
 
 
-__all__ = ["configure_logging", "logger"]
+@contextlib.contextmanager
+def book_log_file(path: Path) -> Iterator[None]:
+    """Tee logs to a per-book ``run.log`` for the duration of the block."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sink_id = logger.add(str(path), level="DEBUG", backtrace=False, diagnose=False)
+    try:
+        yield
+    finally:
+        logger.remove(sink_id)
+
+
+__all__ = ["book_log_file", "configure_logging", "logger"]

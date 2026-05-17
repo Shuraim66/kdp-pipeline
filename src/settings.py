@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     fal_max_concurrent: int = 5
     anthropic_max_concurrent: int = 3
 
+    # Optional ceiling — `build` aborts if a book's projected cost exceeds it.
+    max_book_cost_usd: float | None = None
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

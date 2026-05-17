@@ -154,6 +154,26 @@ def fail_book(book_id: UUID, phase: str, reason: str) -> None:
         )
 
 
+def reset_failed_book(book_id: UUID) -> bool:
+    """Reset a `failed` book to `created` so the pipeline can be re-run.
+
+    Returns whether a failed book was actually reset. This deliberately
+    bypasses the state machine — `failed` is otherwise a terminal state.
+    """
+    with (
+        get_pool().connection() as conn,
+        conn.transaction(),
+        conn.cursor() as cur,
+    ):
+        cur.execute(
+            "UPDATE books SET status = 'created'::book_status, "
+            "failure_reason = NULL, failure_phase = NULL "
+            "WHERE id = %s AND status = 'failed'::book_status",
+            (book_id,),
+        )
+        return cur.rowcount > 0
+
+
 def update_metadata(book_id: UUID, **fields: Any) -> None:
     """Update whitelisted metadata columns on a book.
 

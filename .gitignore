@@ -13,6 +13,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
 
 # Licensed assets — Phase 8 bundles Bebas Neue + Open Sans (SIL OFL,
 # redistributable). If those fonts get committed in-repo, remove this line.
