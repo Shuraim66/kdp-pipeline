@@ -360,6 +360,44 @@ def test_run_qa_vision_grades_every_passing_page(
     assert fake_anthropic.calls == config.book.page_count
 
 
+def test_run_qa_builds_a_fresh_vision_provider_each_round(
+    make_niche_config, make_book, make_image, tmp_path, monkeypatch
+) -> None:
+    # Regression: run_qa runs each round in its own asyncio.run(), and an
+    # AnthropicProvider's semaphore binds permanently to the first event loop
+    # it touches. A vision provider built once and reused across rounds
+    # deadlocks the second round — so run_qa must build a fresh one per round.
+    config = make_niche_config(max_retries=2)
+    width, height = config.generation.image_dimensions
+    book = make_book(slug=_SLUG, status=BS.GENERATION_DONE)
+    # Slot 0 starts blank (fails pixel QA) so the run takes more than one round.
+    store = _Store(_seed_images(config, book, tmp_path, frozenset({0}), make_image))
+    _install_store(monkeypatch, store)
+    monkeypatch.setattr("src.qa.runner.transition_status", Mock())
+    monkeypatch.setattr("src.qa.runner.fail_book", Mock())
+    fal = _FakeFal(_clean_png(width, height))
+
+    built: list[int] = []
+
+    def _vision_factory() -> _FakeAnthropic:
+        provider = _FakeAnthropic()
+        built.append(id(provider))
+        return provider
+
+    run_qa(
+        book,
+        config,
+        provider_factory=lambda: fal,
+        output_dir=tmp_path,
+        vision_provider_factory=_vision_factory,
+    )
+
+    # The factory was called more than once (up-front check + at least one
+    # round) and every provider it returned is a distinct instance.
+    assert len(built) >= 2
+    assert len(set(built)) == len(built)
+
+
 def test_run_qa_vision_rejection_triggers_regeneration(
     make_niche_config, make_book, make_image, tmp_path, monkeypatch
 ) -> None:

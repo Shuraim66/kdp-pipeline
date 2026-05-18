@@ -162,10 +162,17 @@ def run_qa(
     regenerate — so QA on an all-passing book never touches the Fal provider.
     When `vision_provider_factory` is given, each round also runs Vision QA on
     the pages that just passed pixel QA; its rejections feed the same retry
-    loop. The vision provider is built once, up front, so a missing API key
-    fails before the book moves to `qa_running`.
+    loop. The factory is called once up front (so a missing API key fails
+    before the book moves to `qa_running`) and then afresh every round: each
+    round runs its own `asyncio.run`, and an `AnthropicProvider`'s semaphore
+    binds permanently to the first event loop it touches — one provider reused
+    across rounds deadlocks the second one.
     """
-    vision_provider = vision_provider_factory() if vision_provider_factory is not None else None
+    # Validate the vision provider up front — a missing API key must fail
+    # before the book moves to `qa_running` — but discard the instance; it is
+    # rebuilt per round below (see this function's docstring).
+    if vision_provider_factory is not None:
+        vision_provider_factory()
 
     if book.status == BookStatus.GENERATION_DONE:
         transition_status(book.id, BookStatus.QA_RUNNING)
@@ -176,8 +183,8 @@ def run_qa(
     for _ in range(config.qa.max_retries_per_slot + 2):
         rounds += 1
         _qa_pending(book.id, config.qa)
-        if vision_provider is not None:
-            vision_rejected += _vision_qa_round(book, config, vision_provider)
+        if vision_provider_factory is not None:
+            vision_rejected += _vision_qa_round(book, config, vision_provider_factory())
         plan = plan_generation(config, list_images(book.id))
         if not plan.to_generate:
             break
