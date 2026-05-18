@@ -137,6 +137,9 @@ class Image:
     vision_qa_model: str | None = None
     vision_qa_cost_usd: Decimal | None = None
     vision_qa_evaluated_at: datetime | None = None
+    # Ink-density metric — percentage of the page that is ink, measured by the
+    # post-process. Advisory: feeds the Q6 feedback tooling, never gates QA.
+    ink_density_pct: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

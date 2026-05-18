@@ -165,3 +165,33 @@ def test_dilate_mode_always_uses_full_window() -> None:
     arr[:, ::4] = 0
     result = normalize_line_art(_from_array(arr), target_size=(200, 200), mode="dilate")
     assert result.dilate_window == 5
+
+
+# --- ink density ----------------------------------------------------------
+
+
+def test_blank_page_has_zero_ink_density() -> None:
+    source = Image.new("L", (128, 128), color=255)
+    result = normalize_line_art(_png(source), target_size=(256, 256), mode="minimal")
+    assert result.ink_density_pct == 0.0
+
+
+def test_ink_density_is_reported_for_an_inked_page() -> None:
+    # A vertical stroke every 4 px — clearly inked, so density is well above 0.
+    arr = np.full((200, 200), 255, dtype=np.uint8)
+    arr[:, ::4] = 0
+    result = normalize_line_art(_from_array(arr), target_size=(200, 200), mode="minimal")
+    assert result.ink_density_pct > 0.0
+
+
+def test_ink_density_is_mode_independent() -> None:
+    # Ink density measures the *generation*, not the post-process: all three
+    # modes must report an identical value for the same source page.
+    arr = np.full((200, 200), 255, dtype=np.uint8)
+    arr[:, ::4] = 0
+    png = _from_array(arr)
+    densities = {
+        mode: normalize_line_art(png, target_size=(200, 200), mode=mode).ink_density_pct
+        for mode in ("minimal", "dilate", "auto")
+    }
+    assert len(set(densities.values())) == 1

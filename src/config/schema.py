@@ -83,6 +83,23 @@ class QASpec(_Strict):
     required_white_margin_px: int = Field(ge=0)
     required_dimensions: tuple[int, int]
     max_retries_per_slot: int = Field(ge=0)
+    # Advisory ink-density band [low, high] in percent — the healthy ink-
+    # coverage range for a well-tuned subject. Surfaced for human review by
+    # the Q6 feedback tooling (`ink-density`, `validate-niche --ink-preview`);
+    # it is never tied to `qa_status` and never gates QA. The default suits
+    # Bold & Easy niches; an intricate niche can widen the upper bound.
+    ink_density_band: tuple[float, float] = (3.0, 8.0)
+
+    @model_validator(mode="after")
+    def _check_ink_density_band(self) -> QASpec:
+        """The band must be an ascending [low, high] pair within 0-100."""
+        low, high = self.ink_density_band
+        if not 0.0 <= low < high <= 100.0:
+            raise ValueError(
+                "qa.ink_density_band must be [low, high] with 0 <= low < high <= 100, "
+                f"got {list(self.ink_density_band)}"
+            )
+        return self
 
 
 class PostProcessSpec(_Strict):

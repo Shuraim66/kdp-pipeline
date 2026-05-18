@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 from click.testing import CliRunner, Result
 from src.db.models import BookStatus, IllegalTransitionError, StatusLogEntry
-from src.main import cli, find_orphan_images
+from src.main import _ink_density_band, cli, find_orphan_images
 
 _NICHES_DIR = Path(__file__).resolve().parent.parent / "niches"
 _NURSES_YAML = str(_NICHES_DIR / "nurses_v1.yaml")
@@ -180,6 +180,25 @@ def test_find_orphan_images_all_referenced(tmp_path: Path) -> None:
     kept.write_bytes(b"png")
 
     assert find_orphan_images(raw, {kept.resolve()}) == []
+
+
+# --------------------------------------------------------------------------
+# _ink_density_band — reads the advisory band defensively from a stored config
+# --------------------------------------------------------------------------
+
+
+def test_ink_density_band_reads_from_config() -> None:
+    assert _ink_density_band({"qa": {"ink_density_band": [4.0, 9.0]}}) == (4.0, 9.0)
+
+
+def test_ink_density_band_defaults_when_absent() -> None:
+    # A book whose stored config predates the field falls back to the default.
+    assert _ink_density_band({"qa": {"min_white_pct": 90.0}}) == (3.0, 8.0)
+
+
+def test_ink_density_band_defaults_on_stale_config() -> None:
+    # A pre-Q4 config (no `qa` section at all) must not raise — just default.
+    assert _ink_density_band({}) == (3.0, 8.0)
 
 
 # --------------------------------------------------------------------------

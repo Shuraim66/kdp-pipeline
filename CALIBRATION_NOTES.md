@@ -75,6 +75,16 @@ regeneration).
 Also: a "subject fundamentally different" red flag now maps to
 `rejected_vision_subject` (was defaulting to `rejected_vision_composition`).
 
+## Vision QA cost — measured Q6 (2026-05-18)
+
+The Q6 smoke test gave the first real per-evaluation cost: **$0.013–0.014 per
+image** (Claude Sonnet on a 1024px PNG plus the full rubric prompt) — not the
+~$0.004 estimated earlier. Revised projections:
+
+- Per-book Vision QA (≈70 evaluations including retries): **$0.95–1.05**.
+- Full pipeline per-book: **≈$3.50** (revised up from ≈$2.50) — still inside
+  the $5/book ceiling.
+
 ## Line-art ink threshold — adaptive, since Q4 (`src/utils/line_art.py`)
 
 `normalize_line_art` binarises each generated page to pure black-on-white. The
@@ -218,11 +228,18 @@ This is not fixed — it is deferred:
   (`fal-ai/flux-general`, $0.075/image) does not address subject scale either,
   and carried real tuning risk; Q5 closed the consistency gap by subject
   curation instead. Subject scale remains unsolved.
-- **Q6 (tooling)** should add a deterministic fallback: a "post-process
-  auto-crop and recenter" step in `normalize_line_art`. Detecting the ink
-  bounding box and rescaling it to a target fill fraction is cheap, deterministic,
-  and independent of the model — a safety net for when a generation still comes
-  back small. Worth implementing alongside the adaptive threshold.
+- **Deferred to a post-Q6 mini-phase — "pipeline scale normalization."** A
+  deterministic auto-crop-and-recenter step in `normalize_line_art`: detect the
+  ink bounding box, rescale to a target fill fraction. It needs its own spec
+  (target fill fraction, intentional-whitespace edge cases, scene-level vs
+  subject-level cropping decisions) and is sequenced after Q6's tooling.
+  **First empirical datapoint (Q6 smoke test):** subj00 measured at 1.87% ink
+  — a true measurement (confirmed by independent re-measurement), genuinely
+  sparse, not a wiring bug. The Q6 `ink_density_pct` metric flagged it SPARSE
+  while Vision QA passed it at 81 — both judgments are valid: the image is
+  individually fine but compositionally sparse for the niche register, which
+  is exactly the signal the metric exists to surface, and the empirical input
+  the auto-crop step will tune against. Target: 3%+ ink after auto-crop.
 
 ## Visual consistency — subject curation (Q5)
 
@@ -280,11 +297,18 @@ curation-swapped — subj09 busy-cottage→birdhouse, subj14 owl+toadstool→kaw
 owl, subj21 fern-posy→three daisies, subj24 windowsill→(plain teacup, pale)→
 kawaii teacup character.
 
-## Future tooling
+## Q6 feedback-loop tooling — shipped
 
-The 7-runs-per-image variance probe used to calibrate the Vision QA threshold
-proved its worth — single-shot scores hid that the teddy straddled the
-boundary. A `probe-vision-qa <image> --runs N` CLI command (score distribution
-+ red-flag frequency for one image) is planned for Q6; useful for calibrating
-new niches, debugging an unexpected reject, and telling rubric signal from
-run-to-run noise.
+The quality spec's final phase shipped four analytics commands —
+`analyze-prompt-hints`, `subject-performance`, `ink-density`, `probe-vision-qa`
+— plus the advisory `ink_density_pct` metric. `probe-vision-qa` productionises
+the 7-runs-per-image variance probe that calibrated the Vision QA threshold
+(single-shot scores had hidden that the teddy straddled the boundary); it is
+the tool for calibrating new niches, debugging an unexpected reject, and
+telling rubric signal from run-to-run noise.
+
+**`analyze-prompt-hints` has no data yet.** The Q1–Q5 calibration ran via
+throwaway scripts, not the `generate-images` / `run-qa` pipeline, so the
+database holds zero `vision_qa_prompt_hint` rows. The first real signal arrives
+after the first full 50-image book run — **plan: run `analyze-prompt-hints` on
+that book to inform book 2's subject list.**

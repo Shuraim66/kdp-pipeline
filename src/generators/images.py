@@ -183,9 +183,7 @@ async def _generate_one(
     # it by the attempt number, so a rejected slot is re-rolled rather than
     # reproduced verbatim. A niche with no fixed seed gets a random one.
     seed = (
-        generation.fixed_seed + planned.retry_attempt
-        if generation.fixed_seed is not None
-        else None
+        generation.fixed_seed + planned.retry_attempt if generation.fixed_seed is not None else None
     )
     # FLUX schnell takes no guidance; a niche signals that with guidance 0.
     guidance = generation.guidance_scale if generation.guidance_scale > 0 else None
@@ -252,6 +250,7 @@ async def _generate_one(
         cost_usd=result.cost_usd,
         retry_of_image_id=planned.retry_of_image_id,
         retry_attempt=planned.retry_attempt,
+        ink_density_pct=line_art.ink_density_pct,
     )
     logger.debug("slot {} saved -> {}", planned.slot.sequence_num, path)
     return result.cost_usd

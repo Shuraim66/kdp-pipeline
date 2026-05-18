@@ -54,21 +54,28 @@ _BACKGROUND_MARGIN = 7
 _THRESHOLD_FLOOR = 180
 # Edge of each square corner patch sampled to estimate the background.
 _CORNER_PATCH = 100
+# The post-process modes `normalize_line_art` accepts.
+_MODES = ("minimal", "dilate", "auto")
 
 
 class LineArtResult(NamedTuple):
     """The output of `normalize_line_art`, with an audit trail of how it was made.
 
     `image_bytes` is the processed page — PNG, ``L`` mode, sized at the target.
-    `threshold` is the adaptive ink/white cutoff; `dilate_window` is the
-    `MinFilter` window used (1 = none). Both are ``None`` when the mode does
-    not use them. All are recorded in generation_params for auditing.
+    `threshold` is the adaptive ink/white cutoff. `dilate_window` is the
+    `MinFilter` window used (1 = none), ``None`` for the `minimal` mode that
+    does not dilate. `ink_density_pct` is the percentage of the page that is
+    ink, measured on the binarised source — a property of the *generation*,
+    not the post-process, so all three modes report the same value for the
+    same page. The mode, threshold, and window are recorded in
+    generation_params; `ink_density_pct` is persisted to its own column.
     """
 
     image_bytes: bytes
     mode: str
-    threshold: int | None
+    threshold: int
     dilate_window: int | None
+    ink_density_pct: float
 
 
 def _adaptive_threshold(gray: np.ndarray) -> int:
@@ -117,7 +124,13 @@ def _to_png(image: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def _normalize_minimal(source: Image.Image, target_size: tuple[int, int]) -> LineArtResult:
+def _normalize_minimal(
+    source: Image.Image,
+    target_size: tuple[int, int],
+    *,
+    threshold: int,
+    ink_density_pct: float,
+) -> LineArtResult:
     """Upscale and whiten the background — nothing else.
 
     Keeps the model's own antialiased strokes intact: binarising jags the edges
@@ -125,30 +138,37 @@ def _normalize_minimal(source: Image.Image, target_size: tuple[int, int]) -> Lin
     the adaptive threshold) is forced to pure white, so the page is clean
     without the line art itself being touched.
     """
-    threshold = _adaptive_threshold(np.asarray(source))
     upscaled = source.resize(target_size, Image.Resampling.LANCZOS)
     array = np.asarray(upscaled)
     whitened = np.where(array >= threshold, 255, array).astype(np.uint8)
-    return LineArtResult(_to_png(Image.fromarray(whitened, mode="L")), "minimal", threshold, None)
+    return LineArtResult(
+        _to_png(Image.fromarray(whitened, mode="L")), "minimal", threshold, None, ink_density_pct
+    )
 
 
 def _normalize_binarising(
-    source: Image.Image, target_size: tuple[int, int], *, mode: str
+    source: Image.Image,
+    target_size: tuple[int, int],
+    *,
+    mode: str,
+    threshold: int,
+    binary: Image.Image,
+    ink_fraction: float,
+    ink_density_pct: float,
 ) -> LineArtResult:
     """Binarise, bold the strokes, and upscale — the `dilate` / `auto` path.
 
     `dilate` bolds with a fixed full window; `auto` picks the window per image
     from ink density so detail-rich pages are not merged into solid masses.
-    After the upscale the page is re-binarised so the interpolation leaves no
-    grey halo.
+    The binarised source and its ink fraction are computed once by the caller
+    and reused here. After the upscale the page is re-binarised so the
+    interpolation leaves no grey halo.
     """
-    threshold = _adaptive_threshold(np.asarray(source))
-    cleaned = _binarise(source, threshold)
-    window = _DILATE_WINDOW_FULL if mode == "dilate" else _dilation_window(_ink_fraction(cleaned))
-    bold = cleaned if window <= 1 else cleaned.filter(ImageFilter.MinFilter(window))
+    window = _DILATE_WINDOW_FULL if mode == "dilate" else _dilation_window(ink_fraction)
+    bold = binary if window <= 1 else binary.filter(ImageFilter.MinFilter(window))
     upscaled = bold.resize(target_size, Image.Resampling.LANCZOS)
     final = _binarise(upscaled, _UPSCALE_CUTOFF)
-    return LineArtResult(_to_png(final), mode, threshold, window)
+    return LineArtResult(_to_png(final), mode, threshold, window, ink_density_pct)
 
 
 def normalize_line_art(
@@ -159,13 +179,32 @@ def normalize_line_art(
     `mode` selects the post-process (see the module docstring): ``minimal``
     upscales and whitens only; ``dilate`` and ``auto`` binarise and bold the
     strokes. Returns a `LineArtResult` — PNG bytes of an ``L``-mode image sized
-    exactly `target_size`, plus the mode and the threshold / dilation window
-    used. Raises `ValueError` on an unknown mode.
+    exactly `target_size`, plus the mode, the threshold / dilation window used,
+    and the ink-density measurement. Raises `ValueError` on an unknown mode.
     """
+    if mode not in _MODES:
+        raise ValueError(f"unknown post-process mode: {mode!r}")
     with Image.open(io.BytesIO(image_bytes)) as handle:
         source = handle.convert("L")
+    # Ink density is measured once, here — on the binarised source at the
+    # model's native resolution, before any mode-specific processing — so it
+    # describes the *generation* and reads identically across all three modes.
+    # The binarised view and its ink fraction are then reused by the
+    # binarising modes, which need exactly this computation to size a window.
+    threshold = _adaptive_threshold(np.asarray(source))
+    binary = _binarise(source, threshold)
+    ink_fraction = _ink_fraction(binary)
+    ink_density_pct = round(ink_fraction * 100.0, 2)
     if mode == "minimal":
-        return _normalize_minimal(source, target_size)
-    if mode in ("dilate", "auto"):
-        return _normalize_binarising(source, target_size, mode=mode)
-    raise ValueError(f"unknown post-process mode: {mode!r}")
+        return _normalize_minimal(
+            source, target_size, threshold=threshold, ink_density_pct=ink_density_pct
+        )
+    return _normalize_binarising(
+        source,
+        target_size,
+        mode=mode,
+        threshold=threshold,
+        binary=binary,
+        ink_fraction=ink_fraction,
+        ink_density_pct=ink_density_pct,
+    )

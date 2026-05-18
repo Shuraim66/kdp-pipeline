@@ -11,6 +11,7 @@ import shutil
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import click
@@ -20,7 +21,7 @@ from alembic.script import ScriptDirectory
 from pydantic import ValidationError
 
 from src.config.loader import compute_config_hash, load_niche_config
-from src.config.schema import NicheConfig
+from src.config.schema import NicheConfig, QASpec
 from src.db.models import (
     Book,
     BookNotFoundError,
@@ -44,16 +45,33 @@ from src.db.repos.books import (
     set_asin,
     transition_status,
 )
-from src.db.repos.images import count_by_status, list_images, update_qa_status
+from src.db.repos.images import (
+    count_by_status,
+    list_images,
+    subject_performance_rows,
+    subject_rejection_rows,
+    update_qa_status,
+)
 from src.generators.cover import build_all_covers, generate_hero
 from src.generators.images import plan_generation, resolve_book, run_generation
 from src.generators.interior import build_interior_pdf
 from src.generators.metadata import MetadataValidationError, run_metadata
-from src.providers.anthropic import get_anthropic_provider
-from src.providers.fal import cost_for_image, get_fal_provider
+from src.providers.anthropic import AnthropicProvider, get_anthropic_provider
+from src.providers.fal import FalProvider, cost_for_image, get_fal_provider
+from src.qa.insights import (
+    build_ink_density_report,
+    build_probe_report,
+    build_prompt_hint_report,
+    build_subject_performance_report,
+)
 from src.qa.pdf_qa import check_cover_pdf, check_interior_pdf
 from src.qa.runner import apply_manual_verdict, build_review_html, run_qa
-from src.qa.vision_qa import DEFAULT_PASS_THRESHOLD, build_vision_qa_summary
+from src.qa.vision_qa import (
+    DEFAULT_PASS_THRESHOLD,
+    VisionQAResult,
+    build_vision_qa_summary,
+    evaluate_image,
+)
 from src.settings import get_settings
 from src.utils.kdp_specs import (
     POINTS_PER_INCH,
@@ -61,7 +79,9 @@ from src.utils.kdp_specs import (
     interior_layout,
     parse_trim_size,
 )
+from src.utils.line_art import normalize_line_art
 from src.utils.logging import book_log_file, configure_logging
+from src.utils.prompts import build_image_prompt
 
 _ALEMBIC_INI = Path(__file__).resolve().parent.parent / "alembic.ini"
 
@@ -113,7 +133,13 @@ def db_status() -> None:
 
 @cli.command("validate-niche")
 @click.argument("yaml_path", type=click.Path(exists=True, dir_okay=False))
-def validate_niche(yaml_path: str) -> None:
+@click.option(
+    "--ink-preview",
+    is_flag=True,
+    help="After validating, generate 5 sample pages and report their ink density "
+    "(costs ~5 Fal.ai calls).",
+)
+def validate_niche(yaml_path: str, ink_preview: bool) -> None:
     """Validate a niche YAML config; print a summary or the errors."""
     try:
         config = load_niche_config(yaml_path)
@@ -138,6 +164,9 @@ def validate_niche(yaml_path: str) -> None:
     click.echo(f"  modifiers:   {len(config.composition_modifiers)}")
     click.echo(f"  keywords:    {len(config.metadata.keywords_seed)}")
     click.echo(f"  config_hash: {compute_config_hash(config)}")
+
+    if ink_preview:
+        _run_ink_preview(config)
 
 
 @cli.command("generate-images")
@@ -982,6 +1011,223 @@ def cleanup_orphans_command(slug: str, assume_yes: bool) -> None:
     for path in orphans:
         path.unlink()
     click.echo(f"Deleted {len(orphans)} file(s).")
+
+
+def _sample_subject_indices(count: int, sample: int = 5) -> list[int]:
+    """Evenly-spaced subject indices for the ink-density preview.
+
+    Even spacing beats a random draw here: niche YAMLs group their subjects by
+    category (characters, then houses, then baskets, ...), so a fixed stride
+    spans every category, whereas a random sample can miss whole groups.
+    """
+    if count <= sample:
+        return list(range(count))
+    step = (count - 1) / (sample - 1)
+    return sorted({round(i * step) for i in range(sample)})
+
+
+async def _ink_preview(
+    config: NicheConfig, indices: list[int], provider: FalProvider
+) -> list[tuple[int, str, float]]:
+    """Generate the sampled subjects and measure each page's ink density."""
+    generation = config.generation
+    width, height = generation.image_dimensions
+    loras = [{"path": lora.path, "scale": lora.scale} for lora in generation.loras]
+
+    async def _one(idx: int) -> tuple[int, str, float]:
+        subject = config.subjects[idx]
+        prompt, negative = build_image_prompt(config, subject, 0)
+        result = await provider.generate_image(
+            prompt=prompt,
+            model=generation.model,
+            width=width,
+            height=height,
+            num_inference_steps=generation.num_inference_steps,
+            seed=generation.fixed_seed,
+            guidance_scale=generation.guidance_scale if generation.guidance_scale > 0 else None,
+            negative_prompt=negative if loras else None,
+            loras=loras or None,
+        )
+        line_art = await asyncio.to_thread(
+            normalize_line_art,
+            result.image_bytes,
+            target_size=config.qa.required_dimensions,
+            mode=config.post_process.mode,
+        )
+        return idx, subject.name, line_art.ink_density_pct
+
+    return list(await asyncio.gather(*(_one(idx) for idx in indices)))
+
+
+def _run_ink_preview(config: NicheConfig) -> None:
+    """Generate a handful of sample pages and report their ink density.
+
+    The only part of `validate-niche` that spends money — gated behind the
+    `--ink-preview` flag, a cost estimate, and a confirmation.
+    """
+    indices = _sample_subject_indices(len(config.subjects))
+    per_image = cost_for_image(config.generation.model, *config.generation.image_dimensions)
+    low, high = config.qa.ink_density_band
+    click.echo("")
+    click.echo(
+        f"Ink-density preview: generate {len(indices)} sample page(s) via "
+        f"Fal.ai — est. ${per_image * len(indices)}."
+    )
+    if not click.confirm("Proceed?", default=True):
+        click.echo("Skipped ink-density preview.")
+        return
+    try:
+        provider = get_fal_provider()
+    except RuntimeError as exc:
+        click.echo(f"ERROR — {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    rows = asyncio.run(_ink_preview(config, indices, provider))
+    click.echo(f"  advisory band: {low:.1f}-{high:.1f}%")
+    for idx, name, pct in sorted(rows):
+        if pct < low:
+            flag = "  SPARSE"
+        elif pct > high:
+            flag = "  DENSE"
+        else:
+            flag = ""
+        click.echo(f"  subj{idx:02d}  {pct:6.2f}%  {name}{flag}")
+
+
+async def _probe_vision_qa(
+    image_path: Path,
+    subject: str,
+    sequence_num: int,
+    config: NicheConfig,
+    provider: AnthropicProvider,
+    runs: int,
+) -> list[VisionQAResult]:
+    """Grade one image `runs` times — the engine of `probe-vision-qa`."""
+    results: list[VisionQAResult] = []
+    for _ in range(runs):
+        results.append(
+            await evaluate_image(
+                image_path,
+                subject=subject,
+                sequence_num=sequence_num,
+                config=config,
+                provider=provider,
+            )
+        )
+    return results
+
+
+@cli.command("analyze-prompt-hints")
+@click.argument("slug")
+@click.option(
+    "--top",
+    "top_n",
+    type=click.IntRange(min=1),
+    default=10,
+    metavar="N",
+    help="How many recurring terms to list (default 10).",
+)
+def analyze_prompt_hints_command(slug: str, top_n: int) -> None:
+    """Aggregate a book's Vision QA prompt hints into recurring themes."""
+    book = get_book_by_slug(slug)
+    if book is None:
+        click.echo(f"ERROR — no book with slug {slug!r}.", err=True)
+        raise SystemExit(1)
+    click.echo(build_prompt_hint_report(book.slug, list_images(book.id), top_n=top_n))
+
+
+@cli.command("subject-performance")
+@click.argument("niche")
+def subject_performance_command(niche: str) -> None:
+    """Show per-subject QA performance across every book in a niche."""
+    perf_rows = subject_performance_rows(niche)
+    if not perf_rows:
+        click.echo(f"No subject data for niche {niche!r} — generate a book in it first.")
+        return
+    click.echo(build_subject_performance_report(niche, perf_rows, subject_rejection_rows(niche)))
+
+
+def _ink_density_band(config: dict[str, Any]) -> tuple[float, float]:
+    """The advisory ink-density band from a stored book config, or the default.
+
+    `ink-density` needs only these two numbers, so it reads them straight from
+    the stored config dict rather than fully validating it — the report then
+    still works on a book whose config predates a later schema change.
+    """
+    default: tuple[float, float] = QASpec.model_fields["ink_density_band"].default
+    try:
+        low, high = config["qa"]["ink_density_band"]
+        return float(low), float(high)
+    except (KeyError, TypeError, ValueError):
+        return default
+
+
+@cli.command("ink-density")
+@click.argument("slug")
+def ink_density_command(slug: str) -> None:
+    """Show a book's pages whose ink density falls outside the advisory band."""
+    book = get_book_by_slug(slug)
+    if book is None:
+        click.echo(f"ERROR — no book with slug {slug!r}.", err=True)
+        raise SystemExit(1)
+    band = _ink_density_band(book.config)
+    click.echo(build_ink_density_report(book.slug, list_images(book.id), band))
+
+
+@cli.command("probe-vision-qa")
+@click.argument("image_path", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--niche",
+    "niche_yaml",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Niche YAML — supplies the book context the Vision QA rubric needs.",
+)
+@click.option("--subject", required=True, help="What the page is supposed to depict.")
+@click.option(
+    "--runs",
+    type=click.IntRange(min=2),
+    default=5,
+    metavar="N",
+    help="How many times to re-grade the image (default 5).",
+)
+@click.option(
+    "--seq",
+    "sequence_num",
+    type=click.IntRange(min=1),
+    default=1,
+    help="Page number cited in the rubric prompt (cosmetic; default 1).",
+)
+def probe_vision_qa_command(
+    image_path: str, niche_yaml: str, subject: str, runs: int, sequence_num: int
+) -> None:
+    """Grade one image with Vision QA N times to measure score variance."""
+    try:
+        config = load_niche_config(niche_yaml)
+    except ValidationError as exc:
+        click.echo(f"INVALID niche — {niche_yaml}", err=True)
+        click.echo(str(exc), err=True)
+        raise SystemExit(1) from exc
+    except (OSError, ValueError) as exc:
+        click.echo(f"ERROR — {niche_yaml}: {exc}", err=True)
+        raise SystemExit(1) from exc
+    try:
+        provider = get_anthropic_provider()
+    except RuntimeError as exc:
+        click.echo(f"ERROR — {exc}", err=True)
+        raise SystemExit(1) from exc
+    if runs > 10 and not click.confirm(f"{runs} Vision QA calls — proceed?", default=True):
+        click.echo("Aborted.")
+        raise SystemExit(1)
+
+    results = asyncio.run(
+        _probe_vision_qa(Path(image_path), subject, sequence_num, config, provider, runs)
+    )
+    click.echo(
+        build_probe_report(
+            Path(image_path).name, subject, results, threshold=DEFAULT_PASS_THRESHOLD
+        )
+    )
 
 
 if __name__ == "__main__":

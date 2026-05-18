@@ -40,6 +40,7 @@ def _image_from_row(row: dict[str, Any]) -> Image:
         vision_qa_model=row.get("vision_qa_model"),
         vision_qa_cost_usd=row.get("vision_qa_cost_usd"),
         vision_qa_evaluated_at=row.get("vision_qa_evaluated_at"),
+        ink_density_pct=row.get("ink_density_pct"),
     )
 
 
@@ -58,6 +59,7 @@ def create_image(
     cost_usd: Decimal = Decimal(0),
     retry_of_image_id: UUID | None = None,
     retry_attempt: int = 0,
+    ink_density_pct: float | None = None,
 ) -> Image:
     """Insert a generated-image row and return it."""
     with (
@@ -68,8 +70,8 @@ def create_image(
         cur.execute(
             "INSERT INTO images (book_id, sequence_num, prompt, negative_prompt, "
             "seed, model, generation_params, local_path, fal_url, file_sha256, "
-            "cost_usd, retry_of_image_id, retry_attempt) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "cost_usd, retry_of_image_id, retry_attempt, ink_density_pct) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
             "RETURNING *",
             (
                 book_id,
@@ -85,6 +87,7 @@ def create_image(
                 cost_usd,
                 retry_of_image_id,
                 retry_attempt,
+                ink_density_pct,
             ),
         )
         row = cur.fetchone()
@@ -214,3 +217,77 @@ def count_by_status(book_id: UUID) -> dict[str, int]:
         )
         rows = cur.fetchall()
     return {str(status): int(count) for status, count in rows}
+
+
+def subject_performance_rows(niche: str) -> list[dict[str, Any]]:
+    """Per-subject QA aggregates across every book in a niche.
+
+    The aggregation is slot-level: each ``(book, sequence_num)`` is collapsed
+    first — so a subject that needed many retries is not over-weighted — and
+    those slots are then grouped by subject name (`generation_params->>'subject'`).
+    Subjects are returned worst-scoring first. Rows from pre-Q4 images that
+    carry no `subject` key are dropped.
+    """
+    with (
+        get_pool().connection() as conn,
+        conn.cursor(row_factory=dict_row) as cur,
+    ):
+        cur.execute(
+            """
+            WITH slots AS (
+                SELECT i.book_id,
+                       i.sequence_num,
+                       max(i.generation_params->>'subject')                AS subject,
+                       bool_or(i.qa_status = 'passed'::image_qa_status)     AS slot_passed,
+                       max(i.retry_attempt)                                AS max_attempt,
+                       avg(i.vision_qa_score)
+                           FILTER (WHERE i.vision_qa_score IS NOT NULL)     AS slot_score,
+                       avg(i.ink_density_pct)
+                           FILTER (WHERE i.ink_density_pct IS NOT NULL)     AS slot_ink
+                FROM images i
+                JOIN books b ON b.id = i.book_id
+                WHERE b.niche = %s
+                GROUP BY i.book_id, i.sequence_num
+            )
+            SELECT subject,
+                   count(*)                                                AS slots,
+                   count(DISTINCT book_id)                                  AS books,
+                   round(avg(slot_score)::numeric, 1)                       AS avg_score,
+                   round(100.0 * count(*) FILTER (WHERE slot_passed) / count(*)) AS pass_pct,
+                   round(100.0 * count(*) FILTER (WHERE max_attempt > 0) / count(*)) AS retry_pct,
+                   round(avg(slot_ink)::numeric, 1)                         AS avg_ink_pct
+            FROM slots
+            WHERE subject IS NOT NULL
+            GROUP BY subject
+            ORDER BY avg_score ASC NULLS LAST, subject
+            """,
+            (niche,),
+        )
+        return list(cur.fetchall())
+
+
+def subject_rejection_rows(niche: str) -> list[dict[str, Any]]:
+    """Per-subject rejection-status tallies across every book in a niche.
+
+    One row per ``(subject, qa_status)`` pair, counting only the rejected
+    statuses — the caller picks each subject's most common rejection.
+    """
+    with (
+        get_pool().connection() as conn,
+        conn.cursor(row_factory=dict_row) as cur,
+    ):
+        cur.execute(
+            """
+            SELECT i.generation_params->>'subject' AS subject,
+                   i.qa_status::text               AS qa_status,
+                   count(*)                        AS n
+            FROM images i
+            JOIN books b ON b.id = i.book_id
+            WHERE b.niche = %s
+              AND i.generation_params->>'subject' IS NOT NULL
+              AND i.qa_status::text LIKE 'rejected%%'
+            GROUP BY subject, qa_status
+            """,
+            (niche,),
+        )
+        return list(cur.fetchall())

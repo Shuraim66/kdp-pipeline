@@ -121,3 +121,9 @@ qa:
   required_white_margin_px: 75     # integer >= 0
   required_dimensions: [2550, 2550]
   max_retries_per_slot: 3          # integer >= 0
+  # ink_density_band: OPTIONAL [low, high] in percent; defaults to [3.0, 8.0].
+  # The healthy ink-coverage range for a well-tuned Bold & Easy subject.
+  # ADVISORY ONLY — surfaced by `ink-density` and `validate-niche
+  # --ink-preview` for human review; it is never tied to qa_status and never
+  # gates QA (Vision QA does the gating). Intricate niches may widen it.
+  ink_density_band: [3.0, 8.0]
