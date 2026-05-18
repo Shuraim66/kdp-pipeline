@@ -13,6 +13,7 @@ from uuid import uuid4
 from PIL import Image
 from src.db.models import BookStatus, ImageQAStatus
 from src.generators.images import (
+    _seed_for,
     execute_plan,
     expand_slots,
     plan_generation,
@@ -80,6 +81,29 @@ def test_expand_slots_numbers_sequentially(niche_config) -> None:
     assert slots[0].subject == slots[1].subject
     assert (slots[0].variation_idx, slots[1].variation_idx) == (0, 1)
     assert slots[2].subject != slots[0].subject
+
+
+# --- seed assignment ---------------------------------------------------------
+
+
+def test_unique_seeds_per_slot(niche_config) -> None:
+    # Regression: a subject's two variations must not render from the same
+    # seed — that collapses them into near-identical images. The seed must be
+    # unique per (slot, attempt).
+    plan = plan_generation(niche_config, [])
+    assert len(plan.to_generate) == 50
+
+    attempt0 = {_seed_for(42, p.slot.sequence_num, 0) for p in plan.to_generate}
+    attempt1 = {_seed_for(42, p.slot.sequence_num, 1) for p in plan.to_generate}
+
+    assert len(attempt0) == 50  # every slot's attempt-0 seed is distinct
+    assert len(attempt1) == 50  # and every attempt-1 seed
+    assert attempt0.isdisjoint(attempt1)  # no seed reused across attempts
+
+
+def test_seed_is_none_without_a_fixed_seed() -> None:
+    # A niche that pins no seed leaves seed selection to Fal.
+    assert _seed_for(None, 7, 0) is None
 
 
 # --- plan_generation ---------------------------------------------------------

@@ -169,6 +169,20 @@ def plan_generation(
     )
 
 
+def _seed_for(fixed_seed: int | None, sequence_num: int, retry_attempt: int) -> int | None:
+    """The Fal seed for one slot attempt — unique per (slot, attempt).
+
+    The `sequence_num` term gives every page its own noise: without it a
+    subject's two variations would render from the same seed and a near-
+    identical prompt, collapsing into duplicate images. The `retry_attempt`
+    term (x1000, clear of any page index for books up to 999 pages) re-rolls a
+    rejected slot. `None` when the niche pins no seed — Fal picks one at random.
+    """
+    if fixed_seed is None:
+        return None
+    return fixed_seed + sequence_num + retry_attempt * 1000
+
+
 async def _generate_one(
     book: Book,
     config: NicheConfig,
@@ -179,12 +193,7 @@ async def _generate_one(
     """Render one planned slot, save the PNG, and insert its `images` row."""
     generation = config.generation
     width, height = generation.image_dimensions
-    # A pinned seed makes a book's pages one consistent set; each retry offsets
-    # it by the attempt number, so a rejected slot is re-rolled rather than
-    # reproduced verbatim. A niche with no fixed seed gets a random one.
-    seed = (
-        generation.fixed_seed + planned.retry_attempt if generation.fixed_seed is not None else None
-    )
+    seed = _seed_for(generation.fixed_seed, planned.slot.sequence_num, planned.retry_attempt)
     # FLUX schnell takes no guidance; a niche signals that with guidance 0.
     guidance = generation.guidance_scale if generation.guidance_scale > 0 else None
     # `loras` and `negative_prompt` are only valid on the fal-ai/flux-lora

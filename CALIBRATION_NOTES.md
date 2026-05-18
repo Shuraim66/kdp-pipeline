@@ -237,6 +237,37 @@ mis-fires on it — the same shape of mistake as the earlier finding that
 binarise+dilate degraded the LoRA's already-clean line art (see "Line-art
 post-process — three modes"). Pixel-QA thresholds are mode-specific.
 
+## The first full run is a gate in its own right
+
+The first full 50-page cottagecore run behaved as an implicit gate and caught
+a defect no earlier check could. The lesson is methodological:
+
+- **N-subject test gates exercise *different subjects per test*.** Q5's
+  consistency check and the Q2/Q4 gates each compared distinct subjects.
+- **A full run exercises *the same subject across multiple variations*** — and
+  other multi-axis paths (every slot, every retry, the QA loop across rounds)
+  that a handful of one-off generations never touch.
+
+So the first full run on a new niche should be **planned for as its own gate,
+with findings expected** — not treated as a victory lap after the calibration
+gates pass.
+
+**Defect caught here — seed-formula collision across a subject's variations.**
+`_generate_one` computed the Fal seed as `fixed_seed + retry_attempt`. With
+`fixed_seed` pinned (Q5) and `retry_attempt = 0` for a first generation, *every
+one of a book's 50 slots got the same seed*. A subject's two variations then
+rendered from identical noise and a prompt differing only by a weak
+composition-modifier token — so 21 of 25 subjects came back as near-duplicate
+pairs (the detailed ones, cottages and teacups, visually indistinguishable). A
+"50 designs" book was really ~25, doubled. Vision QA cannot catch this — it
+grades each page in isolation, never against its sibling.
+
+Fixed: `seed = fixed_seed + sequence_num + retry_attempt * 1000` — unique per
+(slot, attempt), so every page gets its own noise while retries still re-roll.
+Reproducibility (Q5's actual goal in pinning the seed) is preserved; the
+cross-page *style* consistency Q5 wanted always came from subject curation and
+the style anchors, not the shared seed.
+
 ## Subject swap — `subj08` (Q4)
 
 `niches/nurses_v1.yaml` subject 08 has been changed twice:
