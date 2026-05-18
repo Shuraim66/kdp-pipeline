@@ -201,6 +201,42 @@ merged or destroyed them, so **those gate results stand, uncorrupted**.
 `normalize_line_art` returns a `LineArtResult`; `generation_params` records
 `line_art_mode`, `line_art_threshold`, and `line_art_dilate_window` per image.
 
+## Pixel QA gray gate — recalibrated for `minimal` mode (first full run)
+
+The first full 50-page cottagecore run exposed a calibration mismatch. Pixel
+QA counts any pixel in [50, 200] as "gray" and rejects a page above
+`qa.max_gray_pct`. That gate was calibrated for the *binarised* post-process
+modes (`auto` / `dilate`), whose output is pure black-on-white — there, any
+gray genuinely is shading. But cottagecore runs `minimal` mode, which keeps
+the LoRA's antialiased line edges *by design*, and antialiasing is exactly
+[50, 200]-range pixels. The gate ends up measuring line-art density, not
+shading.
+
+The run, with `max_gray_pct: 3.0`:
+
+- 48 images passed — gray **0.30–2.96%**
+- 31 images rejected `rejected_gray_pct` — gray **3.01–7.68%** (29 in 3.0–4.3%)
+
+One smooth continuum straddling 3.0. Every rejected image was inspected — all
+crisp, clean line art with zero shading (the 7.68% teacup and the 3.65%
+mushroom cottage are both publication quality). All 31 were false positives.
+
+`max_gray_pct` raised **3.0 → 12.0** for cottagecore — per-niche, like
+`min_white_pct` (already loosened 90→85 for the analogous "thick line art
+carries more ink" reason). 12.0 clears the 7.68% observed max with margin for
+detail-heavier future subjects. The value is deliberately generous because the
+errors are asymmetric: a false positive cascades into wasted retries (~$0.035
++ a Vision QA call each), while a false negative — real shading slipping past
+— is caught cheaply downstream by Vision QA's "color or gray fill" red flag.
+When in doubt on this gate, lean lenient.
+
+**The general lesson:** a threshold calibrated against one post-process mode
+does not transfer to another without re-calibration. `minimal` keeps the gray
+that `auto` / `dilate` destroy, so a gray gate tuned on binarised output
+mis-fires on it — the same shape of mistake as the earlier finding that
+binarise+dilate degraded the LoRA's already-clean line art (see "Line-art
+post-process — three modes"). Pixel-QA thresholds are mode-specific.
+
 ## Subject swap — `subj08` (Q4)
 
 `niches/nurses_v1.yaml` subject 08 has been changed twice:
