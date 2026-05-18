@@ -15,10 +15,20 @@ book:
   target_audience: "cottagecore fans, adult coloring enthusiasts, lovers of whimsical woodland art"
 
 style:
+  # Q5 consistency: art_style carries three explicit anchors — line weight,
+  # detail density, subject scale — targeting the variance measured across the
+  # calibration set, so 50 pages read as one illustrator's hand. line_weight is
+  # "uniform medium-bold" to match the anchor (was "very thick", which would
+  # contradict "never thick-and-chunky").
   art_style: >
-    bold and easy line art, thick black outlines, pure black line art,
-    large simple shapes, whimsical and cozy
-  line_weight: "very thick"
+    bold and easy coloring book line art, pure black line art on a white
+    background, whimsical and cozy, uniform medium-bold black line weight
+    throughout — approximately 4-6 pixels at 1000px resolution, never
+    hairline-thin and never thick-and-chunky, simple shapes with minimal
+    interior detail — avoid intricate texture work, cross-hatching, or fine
+    ornamental linework, single subject filling most of the available canvas,
+    generous but balanced whitespace at the edges
+  line_weight: "uniform medium-bold"
   negative_prompts: >
     shading, gray tones, hatching, color, fill, photorealistic, 3d, depth,
     fine lines, intricate details, text, letters, numbers, signatures,
@@ -52,8 +62,11 @@ subjects:
     kind: object
   - name: "a cozy thatched cottage ringed with little mushrooms"
     kind: scene
-  - name: "a sweet little cottage with a flower garden and toadstools"
-    kind: scene
+  # Q5 curation: was "a sweet little cottage with a flower garden and
+  # toadstools" (scene) — rendered busy (raindrop texture, dense foliage).
+  # See CALIBRATION_NOTES.md.
+  - name: "a charming little birdhouse on a post"
+    kind: object
   # Woodland creatures — a single creature is a `character`; a creature plus
   # its setting is a `scene`.
   - name: "a cute hedgehog holding a tiny mushroom"
@@ -64,7 +77,9 @@ subjects:
     kind: character
   - name: "a happy little frog sitting on a mushroom"
     kind: character
-  - name: "a cute owl perched on a giant toadstool"
+  # Q5 curation: was "a cute owl perched on a giant toadstool" — feather
+  # scalloping plus the toadstool over-detailed it. See CALIBRATION_NOTES.md.
+  - name: "a cute kawaii owl character with a round body and simple wings"
     kind: character
   - name: "a cozy woodland scene with a rabbit and a mushroom house"
     kind: scene
@@ -80,17 +95,22 @@ subjects:
     kind: object
   - name: "a pretty mason jar of cottage wildflowers"
     kind: object
-  - name: "a sweet posy of daisies and ferns"
+  # Q5 curation: was "a sweet posy of daisies and ferns" — the ferns rendered
+  # as intricate fronds. See CALIBRATION_NOTES.md.
+  - name: "three cheerful daisies with simple round centers"
     kind: object
   # Tea cups with floral patterns — a single piece of crockery drawn isolated.
   - name: "a cozy teacup and saucer with a rose pattern"
     kind: object
   - name: "a charming floral teapot with a curly handle"
     kind: object
-  # Cozy cottage interiors — small, simple vignettes kept deliberately sparse
-  # to avoid the multi-element scene failures seen in the nurses niche.
-  - name: "a cozy cottage windowsill with potted plants and mushrooms"
-    kind: scene
+  # Q5 curation: was "a cozy cottage windowsill ..." (scene, too busy), then a
+  # plain teacup — which rendered pale across three generations (the LoRA's
+  # glossy-porcelain prior, which minimal mode has no binarise to rescue).
+  # Anthropomorphised to a kawaii character, which renders reliably bold.
+  # See CALIBRATION_NOTES.md.
+  - name: "a cute teacup character with a kawaii face"
+    kind: character
 
 variations_per_subject: 2
 
@@ -135,7 +155,7 @@ generation:
   image_dimensions: [1000, 1000]
   num_inference_steps: 28
   guidance_scale: 3.5
-  fixed_seed: null
+  fixed_seed: 42  # Q5: pinned so all of a book's pages are one consistent set
   loras:
     - path: "https://huggingface.co/renderartist/coloringbookflux/resolve/main/c0l0ringb00k_Flux_v1_renderartist.safetensors"
       scale: 1.0

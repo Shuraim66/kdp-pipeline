@@ -179,11 +179,12 @@ async def _generate_one(
     """Render one planned slot, save the PNG, and insert its `images` row."""
     generation = config.generation
     width, height = generation.image_dimensions
-    # A fixed seed gives the first attempt reproducibility; retries always get
-    # a fresh (random) seed so a rejected image is not reproduced verbatim.
+    # A pinned seed makes a book's pages one consistent set; each retry offsets
+    # it by the attempt number, so a rejected slot is re-rolled rather than
+    # reproduced verbatim. A niche with no fixed seed gets a random one.
     seed = (
-        generation.fixed_seed
-        if generation.fixed_seed is not None and planned.retry_attempt == 0
+        generation.fixed_seed + planned.retry_attempt
+        if generation.fixed_seed is not None
         else None
     )
     # FLUX schnell takes no guidance; a niche signals that with guidance 0.

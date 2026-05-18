@@ -214,14 +214,71 @@ noise, not signal.
 
 This is not fixed — it is deferred:
 
-- **Q5 (style reference)** is the real fix. Once image-to-image / a reference
-  image is in play, the reference *is* the framing constraint — the model
-  matches the reference's subject scale instead of being asked in words.
+- **Q5 evaluated a style-reference fix and declined it.** An IP-Adapter
+  (`fal-ai/flux-general`, $0.075/image) does not address subject scale either,
+  and carried real tuning risk; Q5 closed the consistency gap by subject
+  curation instead. Subject scale remains unsolved.
 - **Q6 (tooling)** should add a deterministic fallback: a "post-process
   auto-crop and recenter" step in `normalize_line_art`. Detecting the ink
   bounding box and rescaling it to a target fill fraction is cheap, deterministic,
   and independent of the model — a safety net for when a generation still comes
   back small. Worth implementing alongside the adaptive threshold.
+
+## Visual consistency — subject curation (Q5)
+
+Q5's goal: a book's 50 pages should read as one illustrator's hand, not 50
+independent LoRA samples.
+
+**Prompt-level style conditioning has limited effect on Flux+LoRA output.**
+Tightening `style.art_style` with explicit line-weight / detail-density / scale
+anchors, plus pinning `fixed_seed`, barely moved a 9-subject consistency check —
+the same wall as Q4's ignored "fill ~70% of page" clause. Flux honours the
+*subject noun*, not descriptive rendering instructions. The anchors and fixed
+seed are kept (harmless, mildly helpful) but they are not the lever.
+
+**Subject choice is the dominant consistency mechanism.** Most of the variance
+is subject-driven — a fern posy is intrinsically intricate, a kawaii mushroom
+intrinsically simple, a plain teacup intrinsically pale. The fix is to curate
+subjects into the LoRA's natural complexity zone, not to coerce them with text.
+
+### Two complexity dimensions
+
+Subject design on a minimal-mode pipeline must account for two independent axes:
+
+1. **Composition complexity** — element count and busyness. *Caught by visual
+   review* of the subject list. Multi-element scenes are fine **when per-element
+   complexity is low** (a rabbit + a simple mushroom-house reads clean); the
+   failure is intricate elements — a six-pot windowsill, a feather-scalloped
+   owl, a fern posy.
+2. **Per-subject ink density** — how dark/bold the LoRA renders the subject.
+   *Caught only by generation*, never by reading the YAML. Subjects with a
+   strong delicate / glossy / sketchy prior in the LoRA's training data — plain
+   dishware, medical equipment, technical objects — render pale, and on
+   `minimal` mode there is no binarise step to rescue them. A plain teacup
+   rendered pale across three generations and three seeds; the deterministic
+   "porcelain" prior could not be beaten by wording.
+
+### Defenses against a pale or over-intricate subject
+
+- **Anthropomorphize** — the kawaii-character version of a subject (a teacup
+  *character* with a face) swaps a delicate / porcelain prior for a bold kawaii
+  prior. Most reliable; also caps composition complexity.
+- **Add ornamentation** — a pattern or embossing gives the model ink to lay
+  down (the floral teapot renders bold; the plain teacup does not).
+- **Reframe as a different noun.**
+
+### Process
+
+Future niche YAML design should **generate 5 random subjects on minimal mode
+before committing the full 25-subject list** — per-subject ink density is
+invisible until you generate.
+
+### What was done for cottagecore
+
+`fixed_seed: 42` pinned; `style.art_style` given explicit anchors; four subjects
+curation-swapped — subj09 busy-cottage→birdhouse, subj14 owl+toadstool→kawaii
+owl, subj21 fern-posy→three daisies, subj24 windowsill→(plain teacup, pale)→
+kawaii teacup character.
 
 ## Future tooling
 
