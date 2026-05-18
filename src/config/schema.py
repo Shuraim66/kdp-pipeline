@@ -85,6 +85,29 @@ class QASpec(_Strict):
     max_retries_per_slot: int = Field(ge=0)
 
 
+class PostProcessSpec(_Strict):
+    """The `post_process:` section — how a generated page is normalised.
+
+    `minimal` upscales and whitens the background only, keeping the model's own
+    line art; `dilate` / `auto` binarise and bold the strokes (for LoRAs whose
+    output is pale and thin). See `src/utils/line_art.py`.
+    """
+
+    mode: Literal["minimal", "dilate", "auto"] = "minimal"
+
+
+class Subject(_Strict):
+    """One coloring-book subject: the phrase to draw and what kind of thing it is.
+
+    `kind` steers the image prompt. An ``object`` is drawn isolated, with no
+    invented characters or environment around it; a ``character`` as a single
+    centred figure; a ``scene`` as a coherent multi-element composition.
+    """
+
+    name: str
+    kind: Literal["object", "character", "scene"]
+
+
 class NicheConfig(_Strict):
     """A fully validated niche configuration."""
 
@@ -92,12 +115,13 @@ class NicheConfig(_Strict):
     niche: str
     book: BookSpec
     style: StyleSpec
-    subjects: list[str] = Field(min_length=1)
+    subjects: list[Subject] = Field(min_length=1)
     variations_per_subject: int = Field(ge=1)
     composition_modifiers: list[str] = Field(min_length=1)
     metadata: MetadataSpec
     cover: CoverSpec
     generation: GenerationSpec
+    post_process: PostProcessSpec = Field(default_factory=PostProcessSpec)
     qa: QASpec
 
     @model_validator(mode="after")

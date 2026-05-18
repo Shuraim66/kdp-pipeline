@@ -143,7 +143,7 @@ def build_metadata_prompt(
         niche=config.niche,
         audience=config.book.target_audience,
         design_count=config.book.page_count,
-        subjects=", ".join(config.subjects),
+        subjects=", ".join(subject.name for subject in config.subjects),
         primary_keyword=config.metadata.keywords_seed[0],
         categories=" | ".join(config.metadata.categories),
         title_seed=config.metadata.title_seed,

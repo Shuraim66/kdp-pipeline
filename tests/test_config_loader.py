@@ -29,7 +29,7 @@ def _valid_config() -> dict[str, Any]:
             "line_weight": "very thick",
             "negative_prompts": "shading, gray, color",
         },
-        "subjects": [f"test subject {i}" for i in range(12)],
+        "subjects": [{"name": f"test subject {i}", "kind": "object"} for i in range(12)],
         "variations_per_subject": 2,
         "composition_modifiers": ["centered composition", "diagonal composition"],
         "metadata": {

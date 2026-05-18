@@ -49,7 +49,7 @@ def make_niche_config() -> Callable[..., NicheConfig]:
                 "line_weight": "very thick",
                 "negative_prompts": "shading, gray, color",
             },
-            "subjects": [f"test subject {i}" for i in range(subjects)],
+            "subjects": [{"name": f"test subject {i}", "kind": "object"} for i in range(subjects)],
             "variations_per_subject": variations,
             "composition_modifiers": ["centered composition", "diagonal composition"],
             "metadata": {

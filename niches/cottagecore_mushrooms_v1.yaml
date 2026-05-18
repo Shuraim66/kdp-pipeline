@@ -1,0 +1,161 @@
+# Cottagecore mushrooms — bold & easy coloring book. Second niche target.
+# Chosen as the best risk-adjusted match for the coloring-book LoRA: whimsical
+# rounded subjects (mushrooms, cottages, woodland creatures) are exactly what
+# the LoRA renders cleanly. Deliberately avoids the nurses failure modes —
+# no technical objects, no multi-instrument compositions.
+# Validate: uv run python -m src.main validate-niche niches/cottagecore_mushrooms_v1.yaml
+
+slug: cottagecore_mushrooms_v1
+niche: cottagecore
+
+book:
+  trim_size: "8.5x8.5"
+  page_count: 50
+  price_usd: 9.99
+  target_audience: "cottagecore fans, adult coloring enthusiasts, lovers of whimsical woodland art"
+
+style:
+  art_style: >
+    bold and easy line art, thick black outlines, pure black line art,
+    large simple shapes, whimsical and cozy
+  line_weight: "very thick"
+  negative_prompts: >
+    shading, gray tones, hatching, color, fill, photorealistic, 3d, depth,
+    fine lines, intricate details, text, letters, numbers, signatures,
+    watermarks, copyright, borders
+
+subjects:
+  # Each subject has a `kind` — object / character / scene — that steers the
+  # image prompt (src/utils/prompts.py). Every name front-loads a cute /
+  # whimsical descriptor: the nurses calibration showed the LoRA leans into
+  # leading tokens, and whimsical framing is this niche's whole advantage.
+  #
+  # Mushroom characters with kawaii faces — anthropomorphised, so `character`.
+  - name: "a cute smiling mushroom character with a kawaii face"
+    kind: character
+  - name: "a cheerful toadstool character with rosy cheeks"
+    kind: character
+  - name: "a sleepy mushroom character with closed happy eyes"
+    kind: character
+  - name: "a jolly spotted mushroom character waving hello"
+    kind: character
+  # Mushroom houses — a single built structure drawn isolated, so `object`.
+  - name: "a cozy mushroom house with round windows and a little door"
+    kind: object
+  - name: "a whimsical toadstool cottage with a curved chimney"
+    kind: object
+  - name: "a charming mushroom house with flower boxes on the windows"
+    kind: object
+  # Cottages with mushrooms — the bare cottage is an object; once a garden or
+  # ring of mushrooms surrounds it, it becomes a small coherent scene.
+  - name: "a charming cottage with a mushroom-shaped roof"
+    kind: object
+  - name: "a cozy thatched cottage ringed with little mushrooms"
+    kind: scene
+  - name: "a sweet little cottage with a flower garden and toadstools"
+    kind: scene
+  # Woodland creatures — a single creature is a `character`; a creature plus
+  # its setting is a `scene`.
+  - name: "a cute hedgehog holding a tiny mushroom"
+    kind: character
+  - name: "a sweet sleepy fox curled up beside a toadstool"
+    kind: character
+  - name: "a cheerful snail with a mushroom-cap shell"
+    kind: character
+  - name: "a happy little frog sitting on a mushroom"
+    kind: character
+  - name: "a cute owl perched on a giant toadstool"
+    kind: character
+  - name: "a cozy woodland scene with a rabbit and a mushroom house"
+    kind: scene
+  # Foraging baskets with mushrooms — a single basket drawn isolated.
+  - name: "a charming wicker foraging basket full of mushrooms"
+    kind: object
+  - name: "a cute basket of freshly picked toadstools"
+    kind: object
+  - name: "a sweet bundle of foraged mushrooms tied with twine"
+    kind: object
+  # Wildflower bouquets — a single arrangement drawn isolated.
+  - name: "a charming bouquet of wildflowers tied with a ribbon"
+    kind: object
+  - name: "a pretty mason jar of cottage wildflowers"
+    kind: object
+  - name: "a sweet posy of daisies and ferns"
+    kind: object
+  # Tea cups with floral patterns — a single piece of crockery drawn isolated.
+  - name: "a cozy teacup and saucer with a rose pattern"
+    kind: object
+  - name: "a charming floral teapot with a curly handle"
+    kind: object
+  # Cozy cottage interiors — small, simple vignettes kept deliberately sparse
+  # to avoid the multi-element scene failures seen in the nurses niche.
+  - name: "a cozy cottage windowsill with potted plants and mushrooms"
+    kind: scene
+
+variations_per_subject: 2
+
+composition_modifiers:
+  # With variations_per_subject: 2, only [0] and [1] are ever used — one per
+  # variation. Both must keep the subject a single coherent illustration.
+  - "centered composition"
+  - "with a simple decorative border"
+  - "on a circular background"
+  - "diagonal composition"
+  - "with small accent shapes in corners"
+  - "with a soft rounded frame"
+
+metadata:
+  title_seed: "Cottagecore Mushrooms: A Cozy Coloring Book"
+  subtitle_seed: "50 Whimsical Woodland Designs for Calm and Relaxation"
+  author: "Quiet Hours Press"
+  keywords_seed:
+    - "cottagecore coloring book"
+    - "mushroom coloring book"
+    - "woodland coloring book for adults"
+    - "whimsical coloring book"
+    - "cozy coloring book"
+    - "cottagecore gifts"
+    - "stress relief coloring book"
+  categories:
+    - "Books > Crafts, Hobbies & Home > Crafts & Hobbies > Drawing"
+    - "Books > Arts & Photography > Drawing"
+
+cover:
+  background_color: "#6b7f5e"
+  accent_color: "#e8c8a0"
+  text_color: "#fefdf8"
+  hero_subject: "a cluster of cute mushrooms with a cottage and wildflowers"
+  hero_style: "colorful, simple flat illustration, vector style, no text"
+  font_family: "Bebas Neue"
+
+generation:
+  # FLUX dev + coloring-book LoRA via the fal-ai/flux-lora endpoint — same
+  # generation stack proven on the nurses niche (Q1-Q3).
+  model: "fal-ai/flux-lora"
+  image_dimensions: [1000, 1000]
+  num_inference_steps: 28
+  guidance_scale: 3.5
+  fixed_seed: null
+  loras:
+    - path: "https://huggingface.co/renderartist/coloringbookflux/resolve/main/c0l0ringb00k_Flux_v1_renderartist.safetensors"
+      scale: 1.0
+      name: "coloringbookflux_renderartist"
+      trigger: "c0l0ringb00k coloring book page"
+
+post_process:
+  # The coloring-book LoRA draws clean, publication-ready line art for this
+  # niche; binarising jags the edges and dilation over-inks the detail. Keep
+  # the model's own output — upscale and whiten the background only. The
+  # calibration A/B is in CALIBRATION_NOTES.md.
+  mode: minimal
+
+qa:
+  # required_dimensions is the post-process target: 2550 px / 8" safe area
+  # = 318 DPI, clearing KDP's 300-DPI minimum.
+  # Bold & Easy specific: thick-line art legitimately carries more ink than
+  # thin line art, so the white-page floor is loosened from 90 to 85.
+  min_white_pct: 85.0
+  max_gray_pct: 3.0
+  required_white_margin_px: 75
+  required_dimensions: [2550, 2550]
+  max_retries_per_slot: 3

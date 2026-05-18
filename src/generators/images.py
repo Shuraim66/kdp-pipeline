@@ -28,7 +28,7 @@ from rich.progress import (
 )
 
 from src.config.loader import compute_config_hash, config_to_dict, load_niche_config
-from src.config.schema import NicheConfig
+from src.config.schema import NicheConfig, Subject
 from src.db.models import Book, BookNotFoundError, BookStatus, Image, ImageQAStatus
 from src.db.repos.books import create_book, get_book_by_slug, transition_status
 from src.db.repos.images import create_image
@@ -46,7 +46,7 @@ class Slot:
     """One page slot — a subject paired with one of its variations."""
 
     sequence_num: int
-    subject: str
+    subject: Subject
     variation_idx: int
 
 
@@ -207,11 +207,13 @@ async def _generate_one(
 
     # The model emits thin antialiased strokes at its own (capped) resolution;
     # normalise to crisp bold line art at the QA-required print resolution.
-    processed = await asyncio.to_thread(
+    line_art = await asyncio.to_thread(
         normalize_line_art,
         result.image_bytes,
         target_size=config.qa.required_dimensions,
+        mode=config.post_process.mode,
     )
+    processed = line_art.image_bytes
 
     filename = f"{planned.slot.sequence_num:03d}_attempt{planned.retry_attempt}.png"
     path = raw_dir / filename
@@ -226,9 +228,14 @@ async def _generate_one(
         "model_output_height": result.height,
         "num_inference_steps": generation.num_inference_steps,
         "guidance_scale": generation.guidance_scale,
-        "subject": planned.slot.subject,
+        "subject": planned.slot.subject.name,
         "variation_idx": planned.slot.variation_idx,
         "loras": [lora.name or lora.path for lora in generation.loras],
+        # Audit trail for the post-process: the mode applied and, for the
+        # binarising modes, the per-image ink threshold and dilation window.
+        "line_art_mode": line_art.mode,
+        "line_art_threshold": line_art.threshold,
+        "line_art_dilate_window": line_art.dilate_window,
     }
     await asyncio.to_thread(
         create_image,
@@ -306,7 +313,7 @@ def _dump_failed_prompts(book: Book, report: GenerationReport, output_dir: Path)
     """Write the prompts of failed slots to ``failed_prompts.txt`` for review."""
     path = output_dir / book.slug / "failed_prompts.txt"
     blocks = [
-        f"# seq {f.planned.slot.sequence_num:03d} | {f.planned.slot.subject} "
+        f"# seq {f.planned.slot.sequence_num:03d} | {f.planned.slot.subject.name} "
         f"| variation {f.planned.slot.variation_idx} | attempt {f.planned.retry_attempt}\n"
         f"# error: {f.error}\n"
         f"{f.planned.prompt}\n"

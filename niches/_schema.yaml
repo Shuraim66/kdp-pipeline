@@ -37,19 +37,35 @@ style:
 
 # subjects: non-empty list. len(subjects) * variations_per_subject must
 # equal book.page_count. Here: 12 * 2 = 24.
+# Each subject needs a `kind`: object | character | scene. It steers the image
+# prompt — an object is drawn isolated (no invented wrapper character), a
+# character as a single centred figure, a scene as a coherent multi-element
+# composition.
 subjects:
-  - "example subject 1"
-  - "example subject 2"
-  - "example subject 3"
-  - "example subject 4"
-  - "example subject 5"
-  - "example subject 6"
-  - "example subject 7"
-  - "example subject 8"
-  - "example subject 9"
-  - "example subject 10"
-  - "example subject 11"
-  - "example subject 12"
+  - name: "example subject 1"
+    kind: object
+  - name: "example subject 2"
+    kind: object
+  - name: "example subject 3"
+    kind: object
+  - name: "example subject 4"
+    kind: object
+  - name: "example subject 5"
+    kind: object
+  - name: "example subject 6"
+    kind: object
+  - name: "example subject 7"
+    kind: object
+  - name: "example subject 8"
+    kind: object
+  - name: "example subject 9"
+    kind: object
+  - name: "example subject 10"
+    kind: object
+  - name: "example character subject 11"
+    kind: character
+  - name: "example scene subject 12"
+    kind: scene
 
 # variations_per_subject: integer >= 1.
 variations_per_subject: 2
@@ -90,6 +106,14 @@ generation:
   num_inference_steps: 4           # integer >= 1
   guidance_scale: 0.0              # float >= 0
   fixed_seed: null                 # integer for reproducible runs, or null
+
+# post_process: OPTIONAL (defaults to mode: minimal). How the generated page
+# is normalised before QA.
+#   minimal — upscale + whiten the background only; keeps the model's line art
+#   dilate  — binarise + bold every stroke (for pale, thin LoRA output)
+#   auto    — binarise + bold, dilation window chosen per image by ink density
+post_process:
+  mode: minimal
 
 qa:
   min_white_pct: 90.0              # 0-100
