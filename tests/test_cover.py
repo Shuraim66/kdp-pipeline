@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from PIL import Image
-from src.generators.cover import build_all_covers, cover_layout
+from src.generators.cover import build_cover, cover_layout
 from src.qa.pdf_qa import check_cover_pdf
 from src.utils.fonts import CoverFonts, load_cover_fonts
 from src.utils.kdp_specs import POINTS_PER_INCH, compute_cover_dimensions
@@ -46,6 +46,8 @@ def test_load_cover_fonts_resolves_to_real_files() -> None:
     assert isinstance(fonts, CoverFonts)
     # Whether the real fonts or the Vera fallback, every path must be usable.
     assert fonts.title.is_file()
+    assert fonts.title_black.is_file()
+    assert fonts.title_regular.is_file()
     assert fonts.body.is_file()
     assert fonts.body_bold.is_file()
 
@@ -63,14 +65,14 @@ def test_cover_layout_columns_are_contiguous() -> None:
 # --- cover composition -------------------------------------------------------
 
 
-def test_build_all_covers_produces_three_variants(
+def test_build_cover_produces_pdf_and_preview(
     tmp_path: Path, make_niche_config, make_book
 ) -> None:
     config = make_niche_config()
     book = make_book(slug="cov_v1", title="A Cover Test Book")
     hero = _hero_png(tmp_path / "hero.png")
 
-    pdfs = build_all_covers(
+    pdf = build_cover(
         book,
         config,
         hero_path=hero,
@@ -79,18 +81,9 @@ def test_build_all_covers_produces_three_variants(
         dpi=72,
     )
 
-    assert {p.name for p in pdfs} == {
-        "cover_variant_a.pdf",
-        "cover_variant_b.pdf",
-        "cover_variant_c.pdf",
-    }
-    assert all(p.is_file() for p in pdfs)
-    cover_dir = tmp_path / "cov_v1" / "cover"
-    assert sorted(p.name for p in cover_dir.glob("*.png")) == [
-        "cover_variant_a.png",
-        "cover_variant_b.png",
-        "cover_variant_c.png",
-    ]
+    assert pdf.name == "cover.pdf"
+    assert pdf.is_file()
+    assert (tmp_path / "cov_v1" / "cover" / "cover.png").is_file()
 
 
 def test_built_cover_passes_qa(tmp_path: Path, make_niche_config, make_book) -> None:
@@ -99,7 +92,7 @@ def test_built_cover_passes_qa(tmp_path: Path, make_niche_config, make_book) -> 
     hero = _hero_png(tmp_path / "hero.png")
     interior_pages = config.book.page_count + 2
 
-    pdfs = build_all_covers(
+    pdf = build_cover(
         book,
         config,
         hero_path=hero,
@@ -110,7 +103,7 @@ def test_built_cover_passes_qa(tmp_path: Path, make_niche_config, make_book) -> 
 
     dims = compute_cover_dimensions(interior_pages, 8.5, 8.5)
     result = check_cover_pdf(
-        pdfs[0],
+        pdf,
         expected_width_pt=dims.total_width_in * POINTS_PER_INCH,
         expected_height_pt=dims.total_height_in * POINTS_PER_INCH,
     )

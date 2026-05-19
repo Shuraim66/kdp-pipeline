@@ -144,9 +144,37 @@ cover:
   background_color: "#6b7f5e"
   accent_color: "#e8c8a0"
   text_color: "#fefdf8"
-  hero_subject: "a cluster of cute mushrooms with a cottage and wildflowers"
-  hero_style: "colorful, simple flat illustration, vector style, no text"
-  font_family: "Bebas Neue"
+  # Reroll 2 (cover v1): the first hero read children's-storybook — saturated
+  # primaries, a busy six-flower foreground, a hard clip-art ground plane. This
+  # prompt pins a muted adult-cottagecore palette and a calmer composition.
+  # "no text/letters/numbers" is omitted here — generate_hero appends it.
+  hero_subject: >
+    A cozy mushroom cottage scene with three red toadstools with cream spots
+    and a small thatched cottage nestled between them, surrounded by gentle
+    wildflowers
+  hero_style: >
+    Muted cottagecore palette: sage green, dusty pink, warm cream, soft
+    terracotta, butter yellow. Flat illustration, vector style, soft warm
+    background, no harsh primary colors, no children's book look, adult
+    coloring book cover aesthetic
+  # Descriptive only — the cover renderer resolves the title .ttf by filename
+  # in src/utils/fonts.py (Fraunces-Bold.ttf), not from this field. Fraunces is
+  # the warm, high-contrast display serif that reads as cottagecore/handcrafted.
+  font_family: "Fraunces"
+  # Front-cover text. The hero (hero.png) was generated externally; compositing
+  # lays a cream title plate + a corner badge over it.
+  headline: "COTTAGECORE MUSHROOMS"
+  subtitle: "A Cozy Bold & Easy Coloring Book"
+  badge_text: "50 Whimsical Designs"
+  # Back-cover copy: a tagline above benefit-driven bullets, plus three
+  # interior pages (by sequence number) shown as framed previews.
+  tagline: "Unwind in a world of cozy cottages, whimsical mushrooms, and woodland charm."
+  bullets:
+    - "50 charming designs to escape into"
+    - "Bold, easy lines — perfect for beginners"
+    - "Premium single-sided pages"
+    - "Generous 8.5 x 8.5\" format"
+  thumbnails: [17, 23, 31]
 
 generation:
   # FLUX dev + coloring-book LoRA via the fal-ai/flux-lora endpoint — same

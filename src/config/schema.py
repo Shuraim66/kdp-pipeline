@@ -45,7 +45,7 @@ class MetadataSpec(_Strict):
 
 
 class CoverSpec(_Strict):
-    """The `cover:` section — colors, hero art, and font."""
+    """The `cover:` section — colors, hero art, font, and front/back text."""
 
     background_color: HexColor
     accent_color: HexColor
@@ -53,6 +53,14 @@ class CoverSpec(_Strict):
     hero_subject: str
     hero_style: str
     font_family: str
+    # Front-cover text. Empty falls back to the metadata title/subtitle.
+    headline: str = ""
+    subtitle: str = ""
+    badge_text: str = ""
+    # Back-cover copy plus the interior pages (sequence numbers) to preview.
+    tagline: str = ""
+    bullets: list[str] = []
+    thumbnails: list[int] = []
 
 
 class LoraConfig(_Strict):

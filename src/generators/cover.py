@@ -1,13 +1,15 @@
-"""Cover assembly — hero illustration, composited wrap cover, PDF variants.
+"""Cover assembly — hero illustration, composited wrap cover, print-ready PDF.
 
 The cover is one rasterised image (back | spine | front, with bleed) at print
 DPI; text is drawn into the pixels with Pillow, so the exported PDF embeds a
-single image and carries no fonts. Three layout variants are produced for the
-user to choose between.
+single image and carries no fonts. The front panel is the hero art bled to the
+trim edges with a cream title plate over it; the back panel carries the blurb,
+benefit bullets, and a row of framed interior-page previews.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,11 +30,11 @@ from src.utils.kdp_specs import (
 )
 from src.utils.logging import logger
 
-VARIANTS = ("a", "b", "c")
-
-# Hero illustration — Fal.ai FLUX dev for higher quality (~$0.025/image).
+# Hero illustration — Fal.ai FLUX dev. The endpoint clamps custom sizes to a
+# 1536 max, so 1536² is the largest hero it returns: 2.36 MP, billed as the
+# 3 MP tier (Fal rounds image area up) → ~$0.075/image at flux/dev's $0.025/MP.
 _HERO_MODEL = "fal-ai/flux/dev"
-_HERO_PX = 1500
+_HERO_PX = 1536
 _HERO_STEPS = 28
 _HERO_GUIDANCE = 3.5
 
@@ -40,6 +42,12 @@ _HERO_GUIDANCE = 3.5
 _MIN_SPINE_TEXT_IN = 0.25
 
 _RGB = tuple[int, int, int]
+
+# Cover palette. The hero art carries the niche colour; these just harmonise
+# with it — a warm cream plate/card, a thin terracotta keyline, dark-brown ink.
+_PLATE_CREAM: _RGB = (247, 241, 227)
+_TERRACOTTA: _RGB = (181, 92, 60)
+_COVER_INK: _RGB = (60, 42, 30)
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,14 +153,25 @@ def _fit_font(
     max_lines: int,
     max_size: int,
 ) -> ImageFont.FreeTypeFont:
-    """Largest font (<= max_size) at which `text` wraps within the line budget."""
+    """Largest font (<= max_size) at which `text` both wraps within the line
+    budget and keeps every line inside `max_width` — a long single word can
+    overflow on width while still counting as one 'line'."""
     size = max_size
     while size > 24:
         font = _font(path, size)
-        if len(_wrap(draw, text, font, max_width)) <= max_lines:
+        lines = _wrap(draw, text, font, max_width)
+        if len(lines) <= max_lines and all(
+            draw.textlength(line, font=font) <= max_width for line in lines
+        ):
             return font
         size -= 4
     return _font(path, 24)
+
+
+def _block_height(font: ImageFont.FreeTypeFont, line_count: int, spacing: float) -> float:
+    """Pixel height of `line_count` lines drawn by `_draw_wrapped` at `spacing`."""
+    ascent, descent = font.getmetrics()
+    return line_count * (ascent + descent) * spacing
 
 
 def _draw_wrapped(
@@ -190,22 +209,18 @@ def _draw_centered(
     draw.text((center_x - width / 2, y), text, font=font, fill=fill)
 
 
+def _draw_star(draw: ImageDraw.ImageDraw, cx: float, cy: float, r: float, fill: _RGB) -> None:
+    """Draw a small four-pointed star (a ✦-style bullet marker)."""
+    inner = r * 0.40
+    points: list[tuple[float, float]] = []
+    for i in range(8):
+        radius = r if i % 2 == 0 else inner
+        angle = -math.pi / 2 + i * math.pi / 4
+        points.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
+    draw.polygon(points, fill=fill)
+
+
 # --- hero placement ----------------------------------------------------------
-
-
-def _paste_hero_fit(
-    canvas_img: Image.Image, hero: Image.Image, box: tuple[int, int, int, int]
-) -> None:
-    """Scale the hero to fit inside `box`, preserving aspect, centred."""
-    x0, y0, x1, y1 = box
-    box_w, box_h = x1 - x0, y1 - y0
-    if box_w <= 0 or box_h <= 0:
-        return
-    scale = min(box_w / hero.width, box_h / hero.height)
-    size = (max(1, round(hero.width * scale)), max(1, round(hero.height * scale)))
-    resized = hero.resize(size, Image.Resampling.LANCZOS)
-    pos = (x0 + (box_w - size[0]) // 2, y0 + (box_h - size[1]) // 2)
-    canvas_img.paste(resized, pos, resized if resized.mode == "RGBA" else None)
 
 
 def _paste_hero_fill(
@@ -225,21 +240,16 @@ def _paste_hero_fill(
     canvas_img.paste(cropped, (x0, y0), cropped if cropped.mode == "RGBA" else None)
 
 
-def _translucent_band(canvas_img: Image.Image, box: tuple[int, int, int, int], color: _RGB) -> None:
-    x0, y0, x1, y1 = box
-    overlay = Image.new("RGBA", (x1 - x0, y1 - y0), (*color, 180))
-    canvas_img.paste(overlay, (x0, y0), overlay)
-
-
 # --- composition -------------------------------------------------------------
 
 
 def _feature_bullets(config: NicheConfig) -> list[str]:
+    """Fallback back-cover bullets when the niche sets none of its own."""
     return [
-        f"•  {config.book.page_count} unique hand-crafted designs",
-        "•  Single-sided pages prevent bleed-through",
-        f"•  {config.style.line_weight.capitalize()} lines, easy to color",
-        f"•  Large {config.book.trim_size.replace('x', ' x ')} inch pages",
+        f"{config.book.page_count} unique hand-crafted designs",
+        "Single-sided pages prevent bleed-through",
+        f"{config.style.line_weight.capitalize()} lines, easy to color",
+        f"Large {config.book.trim_size.replace('x', ' x ')} inch pages",
     ]
 
 
@@ -247,137 +257,139 @@ def _draw_front(
     canvas_img: Image.Image,
     draw: ImageDraw.ImageDraw,
     layout: CoverLayout,
+    config: NicheConfig,
     *,
-    variant: str,
     hero: Image.Image,
     fonts: CoverFonts,
-    title: str,
-    subtitle: str,
-    author: str,
-    text_color: _RGB,
-    accent: _RGB,
-    background: _RGB,
 ) -> None:
-    x0 = layout.front[0] + layout.safe_px
-    x1 = layout.front[1] - layout.safe_px
-    y0 = layout.bleed_px + layout.safe_px
-    y1 = layout.height - layout.bleed_px - layout.safe_px
-    width, height = x1 - x0, y1 - y0
-    center_x = (x0 + x1) // 2
-    headline = title.upper()
+    """Front panel — hero bled to the trim edges, a cream title plate, a badge."""
+    fx0, fx1 = layout.front
+    panel_w = fx1 - fx0
+    height = layout.height
+    center_x = (fx0 + fx1) // 2
+    safe = layout.safe_px
 
-    if variant == "c":
-        _paste_hero_fill(
-            canvas_img,
-            hero,
-            (layout.front[0], layout.bleed_px, layout.front[1], layout.height - layout.bleed_px),
-        )
-        band_top = y0 + round(height * 0.30)
-        band_height = round(height * 0.36)
-        _translucent_band(
-            canvas_img,
-            (layout.front[0], band_top, layout.front[1], band_top + band_height),
-            background,
-        )
-        title_font = _fit_font(
-            draw,
-            fonts.title,
-            headline,
-            max_width=width,
-            max_lines=2,
-            max_size=round(width * 0.17),
-        )
-        below = _draw_wrapped(
-            draw,
-            headline,
-            title_font,
-            center_x=center_x,
-            top_y=band_top + round(band_height * 0.10),
-            max_width=width,
-            fill=text_color,
-        )
-        _draw_wrapped(
-            draw,
-            subtitle,
-            _font(fonts.body_bold, round(width * 0.045)),
-            center_x=center_x,
-            top_y=below + round(height * 0.01),
-            max_width=width,
-            fill=accent,
-        )
-    elif variant == "b":
-        title_font = _fit_font(
-            draw,
-            fonts.title,
-            headline,
-            max_width=width,
-            max_lines=4,
-            max_size=round(width * 0.21),
-        )
-        below = _draw_wrapped(
-            draw,
-            headline,
-            title_font,
-            center_x=center_x,
-            top_y=y0 + round(height * 0.05),
-            max_width=width,
-            fill=text_color,
-        )
-        _draw_wrapped(
-            draw,
-            subtitle,
-            _font(fonts.body_bold, round(width * 0.05)),
-            center_x=center_x,
-            top_y=below + round(height * 0.02),
-            max_width=width,
-            fill=accent,
-        )
-        _paste_hero_fit(
-            canvas_img,
-            hero,
-            (x0 + round(width * 0.16), y0 + round(height * 0.44), x1, y1 - round(height * 0.06)),
-        )
-    else:  # variant a — title on top, hero centred below
-        title_font = _fit_font(
-            draw,
-            fonts.title,
-            headline,
-            max_width=width,
-            max_lines=3,
-            max_size=round(width * 0.17),
-        )
-        below = _draw_wrapped(
-            draw,
-            headline,
-            title_font,
-            center_x=center_x,
-            top_y=y0 + round(height * 0.03),
-            max_width=width,
-            fill=text_color,
-        )
-        below = _draw_wrapped(
-            draw,
-            subtitle,
-            _font(fonts.body_bold, round(width * 0.05)),
-            center_x=center_x,
-            top_y=below + round(height * 0.015),
-            max_width=width,
-            fill=accent,
-        )
-        _paste_hero_fit(
-            canvas_img,
-            hero,
-            (x0, round(below + height * 0.03), x1, y1 - round(height * 0.08)),
-        )
+    # Hero fills the panel, bleeding off the right, top and bottom trim edges.
+    _paste_hero_fill(canvas_img, hero, (fx0, 0, layout.width, height))
 
-    _draw_centered(
+    headline = config.cover.headline or config.metadata.title_seed.upper()
+    subtitle = config.cover.subtitle or config.metadata.subtitle_seed
+    badge = config.cover.badge_text
+
+    # --- title plate: a compact cream card flush with the top safe margin ----
+    plate_w = round(panel_w * 0.74)
+    plate_x0 = center_x - plate_w // 2
+    plate_x1 = plate_x0 + plate_w
+    pad_x = round(plate_w * 0.050)
+    pad_y = round(plate_w * 0.030)
+    gap = round(plate_w * 0.012)
+    inner_w = plate_w - 2 * pad_x
+
+    # The headline is sized so its longest line spans ~80% of the plate width.
+    headline_font = _fit_font(
         draw,
-        author,
-        _font(fonts.body_bold, round(width * 0.046)),
-        center_x=center_x,
-        y=y1 - round(height * 0.055),
-        fill=text_color,
+        fonts.title_black,
+        headline,
+        max_width=round(plate_w * 0.82),
+        max_lines=2,
+        max_size=round(plate_w * 0.46),
     )
+    subtitle_font = _font(fonts.title_regular, round(plate_w * 0.043))
+
+    h_lines = len(_wrap(draw, headline, headline_font, inner_w))
+    s_lines = len(_wrap(draw, subtitle, subtitle_font, inner_w))
+    h_block = _block_height(headline_font, h_lines, 0.96)
+    s_block = _block_height(subtitle_font, s_lines, 1.05)
+
+    plate_h = round(2 * pad_y + h_block + gap + s_block)
+    plate_y0 = layout.bleed_px + safe
+    plate_y1 = plate_y0 + plate_h
+
+    draw.rounded_rectangle(
+        (plate_x0, plate_y0, plate_x1, plate_y1),
+        radius=round(plate_w * 0.028),
+        fill=_PLATE_CREAM,
+        outline=_TERRACOTTA,
+        width=max(3, round(panel_w * 0.003)),
+    )
+
+    below = _draw_wrapped(
+        draw,
+        headline,
+        headline_font,
+        center_x=center_x,
+        top_y=plate_y0 + pad_y,
+        max_width=inner_w,
+        fill=_COVER_INK,
+        spacing=0.96,
+    )
+    _draw_wrapped(
+        draw,
+        subtitle,
+        subtitle_font,
+        center_x=center_x,
+        top_y=below + gap,
+        max_width=inner_w,
+        fill=_COVER_INK,
+        spacing=1.05,
+    )
+
+    # --- corner badge: a terracotta pill in the bottom-right -----------------
+    if badge:
+        badge_font = _font(fonts.title, round(panel_w * 0.020))
+        b_ascent, b_descent = badge_font.getmetrics()
+        b_pad_x = round(panel_w * 0.019)
+        b_pad_y = round(panel_w * 0.010)
+        badge_w = round(draw.textlength(badge, font=badge_font)) + 2 * b_pad_x
+        badge_h = b_ascent + b_descent + 2 * b_pad_y
+        badge_x1 = fx1 - safe
+        badge_x0 = badge_x1 - badge_w
+        badge_y1 = height - layout.bleed_px - safe
+        badge_y0 = badge_y1 - badge_h
+        draw.rounded_rectangle(
+            (badge_x0, badge_y0, badge_x1, badge_y1),
+            radius=badge_h // 2,
+            fill=_TERRACOTTA,
+        )
+        draw.text(
+            (badge_x0 + b_pad_x, badge_y0 + b_pad_y),
+            badge,
+            font=badge_font,
+            fill=_PLATE_CREAM,
+        )
+
+
+def _draw_thumbnails(
+    canvas_img: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    *,
+    images: list[Path],
+    x0: int,
+    x1: int,
+    top_y: int,
+    cell: int,
+) -> None:
+    """Paste a centred row of framed interior-page previews."""
+    if not images or cell <= 0:
+        return
+    gap = round((x1 - x0) * 0.038)
+    total = len(images) * cell + (len(images) - 1) * gap
+    start_x = x0 + ((x1 - x0) - total) // 2
+    border = max(3, round(cell * 0.022))
+    inset = round(cell * 0.055)
+    inner = cell - 2 * inset
+    for idx, path in enumerate(images):
+        cx = start_x + idx * (cell + gap)
+        draw.rounded_rectangle(
+            (cx, top_y, cx + cell, top_y + cell),
+            radius=round(cell * 0.06),
+            fill=_PLATE_CREAM,
+            outline=_TERRACOTTA,
+            width=border,
+        )
+        with Image.open(path) as handle:
+            page = handle.convert("RGB").resize((inner, inner), Image.Resampling.LANCZOS)
+        canvas_img.paste(page, (cx + inset, top_y + inset))
 
 
 def _draw_back(
@@ -389,7 +401,7 @@ def _draw_back(
     title: str,
     author: str,
     text_color: _RGB,
-    accent: _RGB,
+    thumbnails: list[Path],
 ) -> None:
     x0 = layout.back[0] + layout.safe_px
     x1 = layout.back[1] - layout.safe_px
@@ -398,13 +410,14 @@ def _draw_back(
     width = x1 - x0
     center_x = (x0 + x1) // 2
 
+    # One line on the back keeps the lower band free for the page previews.
     title_font = _fit_font(
         draw,
         fonts.title,
         title.upper(),
         max_width=width,
-        max_lines=3,
-        max_size=round(width * 0.11),
+        max_lines=1,
+        max_size=round(width * 0.13),
     )
     y = _draw_wrapped(
         draw,
@@ -414,30 +427,50 @@ def _draw_back(
         top_y=y0,
         max_width=width,
         fill=text_color,
+        spacing=1.0,
     )
-    y = _draw_wrapped(
-        draw,
-        config.metadata.subtitle_seed,
-        _font(fonts.body, round(width * 0.04)),
-        center_x=center_x,
-        top_y=y + round(width * 0.05),
-        max_width=width,
-        fill=text_color,
-    )
-    bullet_font = _font(fonts.body, round(width * 0.036))
-    ascent, descent = bullet_font.getmetrics()
-    y += round(width * 0.06)
-    for bullet in _feature_bullets(config):
-        draw.text((x0, y), bullet, font=bullet_font, fill=accent)
-        y += (ascent + descent) * 1.4
-    _draw_centered(
-        draw,
-        author,
-        _font(fonts.body_bold, round(width * 0.044)),
-        center_x=center_x,
-        y=y1 - round(width * 0.06),
-        fill=text_color,
-    )
+
+    if config.cover.tagline:
+        y += round(width * 0.035)
+        y = _draw_wrapped(
+            draw,
+            config.cover.tagline,
+            _font(fonts.body_bold, round(width * 0.037)),
+            center_x=center_x,
+            top_y=y,
+            max_width=width,
+            fill=text_color,
+            spacing=1.22,
+        )
+
+    bullets = config.cover.bullets or _feature_bullets(config)
+    bullet_font = _font(fonts.body_bold, round(width * 0.034))
+    b_ascent, b_descent = bullet_font.getmetrics()
+    b_line = (b_ascent + b_descent) * 1.42
+    star_r = round(width * 0.016)
+    y += round(width * 0.05)
+    for bullet in bullets:
+        mid = y + (b_ascent + b_descent) / 2
+        _draw_star(draw, x0 + star_r, mid, star_r, _TERRACOTTA)
+        draw.text((x0 + round(width * 0.06), y), bullet, font=bullet_font, fill=text_color)
+        y += b_line
+
+    author_font = _font(fonts.body_bold, round(width * 0.044))
+    author_y = y1 - round(width * 0.05)
+
+    # Interior-page previews fill the band between the bullets and the author.
+    if thumbnails:
+        band_top = y + round(width * 0.035)
+        band_bot = author_y - round(width * 0.035)
+        gap = round(width * 0.038)
+        cell = int(min((width - 2 * gap) // 3, band_bot - band_top, round(width * 0.30)))
+        if cell > 80:
+            row_top = int(band_top + ((band_bot - band_top) - cell) // 2)
+            _draw_thumbnails(
+                canvas_img, draw, images=thumbnails, x0=x0, x1=x1, top_y=row_top, cell=cell
+            )
+
+    _draw_centered(draw, author, author_font, center_x=center_x, y=author_y, fill=text_color)
 
 
 def _draw_spine(
@@ -473,37 +506,22 @@ def compose_cover(
     config: NicheConfig,
     layout: CoverLayout,
     *,
-    variant: str,
     hero: Image.Image,
     fonts: CoverFonts,
+    thumbnails: list[Path],
 ) -> Image.Image:
-    """Composite a full wrap cover for one layout variant."""
+    """Composite the full wrap cover — back, spine, and front."""
     background = _hex_rgb(config.cover.background_color)
     text_color = _hex_rgb(config.cover.text_color)
-    accent = _hex_rgb(config.cover.accent_color)
     canvas_img = Image.new("RGB", (layout.width, layout.height), background)
     draw = ImageDraw.Draw(canvas_img)
 
-    title = book.title or config.metadata.title_seed
-    subtitle = book.subtitle or config.metadata.subtitle_seed
+    title = config.cover.headline or book.title or config.metadata.title_seed
     author = config.metadata.author
 
-    _draw_back(canvas_img, draw, layout, config, fonts, title, author, text_color, accent)
+    _draw_back(canvas_img, draw, layout, config, fonts, title, author, text_color, thumbnails)
     _draw_spine(canvas_img, layout, title, fonts, text_color)
-    _draw_front(
-        canvas_img,
-        draw,
-        layout,
-        variant=variant,
-        hero=hero,
-        fonts=fonts,
-        title=title,
-        subtitle=subtitle,
-        author=author,
-        text_color=text_color,
-        accent=accent,
-        background=background,
-    )
+    _draw_front(canvas_img, draw, layout, config, hero=hero, fonts=fonts)
     return canvas_img
 
 
@@ -516,62 +534,34 @@ def _export_pdf(composite: Image.Image, layout: CoverLayout, pdf_path: Path) -> 
     pdf.save()
 
 
-def build_cover_variant(
+def build_cover(
     book: Book,
     config: NicheConfig,
     *,
-    variant: str,
     hero_path: Path,
     output_dir: Path,
     interior_page_count: int,
-    fonts: CoverFonts,
     paper: str = "white",
     dpi: int = 300,
-) -> tuple[Path, Path]:
-    """Composite one cover variant; return its (PNG preview, PDF) paths."""
+) -> Path:
+    """Composite the wrap cover; return its print-ready PDF path."""
+    fonts = load_cover_fonts()
     trim_w, trim_h = parse_trim_size(config.book.trim_size)
     layout = cover_layout(interior_page_count, trim_w, trim_h, paper=paper, dpi=dpi)
     with Image.open(hero_path) as handle:
         hero = handle.convert("RGBA")
-    composite = compose_cover(book, config, layout, variant=variant, hero=hero, fonts=fonts)
+
+    filtered = sorted((output_dir / book.slug / "images" / "filtered").glob("*.png"))
+    thumbnails = [filtered[i] for i in config.cover.thumbnails if 0 <= i < len(filtered)]
+    composite = compose_cover(book, config, layout, hero=hero, fonts=fonts, thumbnails=thumbnails)
 
     cover_dir = output_dir / book.slug / "cover"
     cover_dir.mkdir(parents=True, exist_ok=True)
-    png_path = cover_dir / f"cover_variant_{variant}.png"
-    composite.save(png_path)
+    composite.save(cover_dir / "cover.png")
 
     pdf_dir = output_dir / book.slug / "pdf"
     pdf_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = pdf_dir / f"cover_variant_{variant}.pdf"
+    pdf_path = pdf_dir / "cover.pdf"
     _export_pdf(composite, layout, pdf_path)
-    return png_path, pdf_path
-
-
-def build_all_covers(
-    book: Book,
-    config: NicheConfig,
-    *,
-    hero_path: Path,
-    output_dir: Path,
-    interior_page_count: int,
-    paper: str = "white",
-    dpi: int = 300,
-) -> list[Path]:
-    """Build all three cover variants; return the list of variant PDF paths."""
-    fonts = load_cover_fonts()
-    pdfs: list[Path] = []
-    for variant in VARIANTS:
-        _, pdf_path = build_cover_variant(
-            book,
-            config,
-            variant=variant,
-            hero_path=hero_path,
-            output_dir=output_dir,
-            interior_page_count=interior_page_count,
-            fonts=fonts,
-            paper=paper,
-            dpi=dpi,
-        )
-        pdfs.append(pdf_path)
-        logger.info("cover variant {} written: {}", variant, pdf_path)
-    return pdfs
+    logger.info("cover written: {}", pdf_path)
+    return pdf_path

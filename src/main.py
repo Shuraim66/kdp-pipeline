@@ -7,7 +7,6 @@ group; later phases add generation, QA, and assembly commands.
 from __future__ import annotations
 
 import asyncio
-import shutil
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -52,7 +51,7 @@ from src.db.repos.images import (
     subject_rejection_rows,
     update_qa_status,
 )
-from src.generators.cover import build_all_covers, generate_hero
+from src.generators.cover import build_cover, generate_hero
 from src.generators.images import plan_generation, resolve_book, run_generation
 from src.generators.interior import build_interior_pdf
 from src.generators.metadata import MetadataValidationError, run_metadata
@@ -439,7 +438,7 @@ def build_interior_command(slug: str, author: str | None) -> None:
     help="Use this image as the hero illustration instead of generating one.",
 )
 def build_cover_command(slug: str, hero: str | None) -> None:
-    """Build three print-ready cover variants for a book."""
+    """Build the print-ready wrap cover for a book."""
     try:
         book, config = resolve_book(slug)
     except (BookNotFoundError, ValidationError, ValueError) as exc:
@@ -467,7 +466,7 @@ def build_cover_command(slug: str, hero: str | None) -> None:
         transition_status(book.id, BookStatus.ASSEMBLING)
 
     interior_pages = config.book.page_count + 2
-    pdfs = build_all_covers(
+    pdf = build_cover(
         book,
         config,
         hero_path=hero_path,
@@ -480,19 +479,13 @@ def build_cover_command(slug: str, hero: str | None) -> None:
     expected_w = dims.total_width_in * POINTS_PER_INCH
     expected_h = dims.total_height_in * POINTS_PER_INCH
 
-    all_passed = True
-    for pdf in pdfs:
-        result = check_cover_pdf(pdf, expected_width_pt=expected_w, expected_height_pt=expected_h)
-        if result.passed:
-            click.echo(f"  {pdf.name}: QA ok")
-        else:
-            all_passed = False
-            click.echo(f"  {pdf.name}: QA FAILED — {'; '.join(result.issues)}", err=True)
-    click.echo(
-        f"3 cover variants in {output_dir / book.slug / 'pdf'} — "
-        "review and rename the winner to cover.pdf."
-    )
-    if not all_passed:
+    result = check_cover_pdf(pdf, expected_width_pt=expected_w, expected_height_pt=expected_h)
+    if result.passed:
+        click.echo(f"  {pdf.name}: QA ok")
+    else:
+        click.echo(f"  {pdf.name}: QA FAILED — {'; '.join(result.issues)}", err=True)
+    click.echo(f"Cover written: {pdf}")
+    if not result.passed:
         raise SystemExit(1)
 
 
@@ -563,8 +556,8 @@ def _assemble_interior(book: Book, config: NicheConfig, output_dir: Path) -> Pat
     return pdf_path
 
 
-def _assemble_cover(book: Book, config: NicheConfig, output_dir: Path) -> list[Path]:
-    """Build the three cover variants, generating the hero art if absent."""
+def _assemble_cover(book: Book, config: NicheConfig, output_dir: Path) -> Path:
+    """Build the wrap cover, generating the hero art if absent."""
     hero_path = output_dir / book.slug / "cover" / "hero.png"
     if not hero_path.is_file():
         try:
@@ -572,7 +565,7 @@ def _assemble_cover(book: Book, config: NicheConfig, output_dir: Path) -> list[P
         except RuntimeError as exc:
             raise click.ClickException(str(exc)) from exc
         asyncio.run(generate_hero(provider, config, output_path=hero_path))
-    return build_all_covers(
+    return build_cover(
         book,
         config,
         hero_path=hero_path,
@@ -741,30 +734,25 @@ def _run_build(yaml_path: str, *, assume_yes: bool, resume: bool, test_images: i
             return
 
         # --- Phases C & D: interior + cover assembly ---
+        assembled = False
         if book.status == BookStatus.QA_DONE:
             transition_status(book.id, BookStatus.ASSEMBLING)
             book = _require_book(book.id)
             click.echo("Phase C — assembling interior PDF …")
             _assemble_interior(book, config, output_dir)
-            click.echo("Phase D — building 3 cover variants …")
+            click.echo("Phase D — building the cover …")
             _assemble_cover(book, config, output_dir)
+            assembled = True
 
-        # --- Gate 2: cover selection (cover.pdf is the marker) ---
-        pdf_dir = output_dir / book.slug / "pdf"
-        cover_pdf = pdf_dir / "cover.pdf"
-        if not cover_pdf.is_file():
-            variants = sorted(pdf_dir.glob("cover_variant_*.pdf"))
-            if assume_yes and variants:
-                shutil.copyfile(variants[0], cover_pdf)
-                click.echo(f"  --yes: selected {variants[0].name} as cover.pdf")
-            else:
-                click.echo("")
-                click.echo(f"⛔ Cover variants are ready in {pdf_dir}.")
-                click.echo(
-                    "   Rename the chosen one to cover.pdf, "
-                    f"then continue with `build --resume {yaml_path}`."
-                )
-                return
+        # --- Gate 2: interior + cover review ---
+        if assembled and not assume_yes:
+            pdf_dir = output_dir / book.slug / "pdf"
+            click.echo("")
+            click.echo(f"⛔ Interior + cover built in {pdf_dir}.")
+            click.echo(
+                f"   Review interior.pdf and cover.pdf, then `build --resume {yaml_path}`."
+            )
+            return
 
         # --- Phase E: listing metadata ---
         book = _require_book(book.id)

@@ -15,6 +15,6 @@ __pycache__/
 .ruff_cache/
 .coverage
 
-# Licensed assets — Phase 8 bundles Bebas Neue + Open Sans (SIL OFL,
+# Licensed assets — Phase 8 bundles Fraunces + Open Sans (SIL OFL,
 # redistributable). If those fonts get committed in-repo, remove this line.
 assets/fonts/
