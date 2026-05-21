@@ -78,7 +78,8 @@ def _fit(
 
 def _draw_title_page(pdf: canvas.Canvas, layout: InteriorLayout, title: str, author: str) -> None:
     center_x = layout.page_width / 2
-    title_lines = _wrap_text(title, _FONT_BOLD, _TITLE_SIZE, layout.safe_width)
+    # Wrap to the text-safe width so a long title can't reach the trim edge.
+    title_lines = _wrap_text(title, _FONT_BOLD, _TITLE_SIZE, layout.text_safe_width)
     line_height = _TITLE_SIZE * 1.2
     y = layout.page_height / 2 + line_height * len(title_lines) / 2
     pdf.setFont(_FONT_BOLD, _TITLE_SIZE)
@@ -92,8 +93,10 @@ def _draw_title_page(pdf: canvas.Canvas, layout: InteriorLayout, title: str, aut
 def _draw_copyright_page(
     pdf: canvas.Canvas, layout: InteriorLayout, author: str, year: int
 ) -> None:
-    margin_x = (layout.page_width - layout.safe_width) / 2
-    y = (layout.page_height + layout.safe_height) / 2 - _BODY_SIZE
+    # Front-matter text uses the wider text-safe inset (0.5"), not the 0.25"
+    # image margin — KDP flags text nearer the trim edge on a bleed PDF.
+    margin_x = (layout.page_width - layout.text_safe_width) / 2
+    y = (layout.page_height + layout.text_safe_height) / 2 - _BODY_SIZE
     pdf.setFont(_FONT_REGULAR, _BODY_SIZE)
     lines = [f"Copyright © {year} {author}. All rights reserved.", ""]
     lines.extend(_COPYRIGHT_TIPS)

@@ -30,6 +30,7 @@ dev = [
     "mypy>=1.11",
     "ruff>=0.6",
     "types-pyyaml>=6.0.12",
+    "pdfplumber>=0.11",  # text-position extraction for interior-PDF margin tests
 ]
 
 # Non-packaged application: `src` is the import root (`python -m src.main`).

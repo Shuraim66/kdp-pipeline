@@ -13,6 +13,10 @@ POINTS_PER_INCH = 72.0
 # KDP paperback interior: 0.125" bleed, 0.25" safe margin, 300 DPI minimum.
 BLEED_IN = 0.125
 SAFE_MARGIN_IN = 0.25
+# Text needs more clearance than images: KDP's Print Previewer flags text
+# closer than 0.375" to the trim edge on a bleed PDF. 0.5" is the safer target
+# applied to front-matter text (title / copyright pages).
+TEXT_SAFE_MARGIN_IN = 0.5
 INTERIOR_MIN_DPI = 300
 
 
@@ -27,7 +31,9 @@ class InteriorLayout:
     """Interior-page geometry, in PDF points, for one trim size.
 
     `page_*` is the full bleed page; `trim_*` is the cut size; `safe_*` is the
-    live area an image or text must stay within (trim minus the safe margin).
+    live area an image must stay within (trim minus the 0.25" safe margin);
+    `text_safe_*` is the tighter area front-matter text must stay within (trim
+    minus the 0.5" text margin — KDP flags text nearer the trim edge).
     """
 
     page_width: float
@@ -36,6 +42,8 @@ class InteriorLayout:
     trim_height: float
     safe_width: float
     safe_height: float
+    text_safe_width: float
+    text_safe_height: float
 
 
 def interior_layout(trim_size: str) -> InteriorLayout:
@@ -43,6 +51,7 @@ def interior_layout(trim_size: str) -> InteriorLayout:
     trim_w_in, trim_h_in = parse_trim_size(trim_size)
     bleed = BLEED_IN * POINTS_PER_INCH
     safe = SAFE_MARGIN_IN * POINTS_PER_INCH
+    text_safe = TEXT_SAFE_MARGIN_IN * POINTS_PER_INCH
     trim_w = trim_w_in * POINTS_PER_INCH
     trim_h = trim_h_in * POINTS_PER_INCH
     return InteriorLayout(
@@ -52,6 +61,8 @@ def interior_layout(trim_size: str) -> InteriorLayout:
         trim_height=trim_h,
         safe_width=trim_w - 2 * safe,
         safe_height=trim_h - 2 * safe,
+        text_safe_width=trim_w - 2 * text_safe,
+        text_safe_height=trim_h - 2 * text_safe,
     )
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pdfplumber
 import pytest
 from PIL import Image
 from pypdf import PdfReader
@@ -92,6 +93,42 @@ def test_check_interior_pdf_flags_wrong_page_count(
 
     assert not result.passed
     assert any("page count" in issue for issue in result.issues)
+
+
+def test_copyright_page_text_stays_within_text_safe_margins(
+    tmp_path: Path, make_niche_config, make_book
+) -> None:
+    # Regression: KDP's Print Previewer flagged page 2 — its left-aligned
+    # copyright/tips text sat only 0.25" from the trim edge. Front-matter text
+    # must clear the trim by the wider 0.5" text-safe margin on all four sides.
+    config = make_niche_config()
+    book = make_book(slug="t_v1", title="A Test Coloring Book")
+    pdf_path = tmp_path / "pdf" / "interior.pdf"
+    build_interior_pdf(
+        book,
+        config,
+        filtered_images=_designs(tmp_path, 3),
+        output_path=pdf_path,
+        author="A. Tester",
+    )
+    layout = interior_layout(config.book.trim_size)
+    left = (layout.page_width - layout.text_safe_width) / 2
+    right = layout.page_width - left
+    bottom = (layout.page_height - layout.text_safe_height) / 2
+    top = layout.page_height - bottom
+    tol = 1.0  # absorb sub-point glyph-metric noise; the KDP limit is 9pt looser
+
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        page = pdf.pages[1]  # page 2 — the copyright / tips page
+        assert "Copyright" in (page.extract_text() or "")
+        chars = page.chars
+        assert chars, "page 2 has no extractable text"
+        for char in chars:
+            glyph = repr(char["text"])
+            assert char["x0"] >= left - tol, f"{glyph} crosses the left text margin"
+            assert char["x1"] <= right + tol, f"{glyph} crosses the right text margin"
+            assert char["y0"] >= bottom - tol, f"{glyph} crosses the bottom text margin"
+            assert char["y1"] <= top + tol, f"{glyph} crosses the top text margin"
 
 
 def test_build_interior_pdf_rejects_an_empty_image_list(
