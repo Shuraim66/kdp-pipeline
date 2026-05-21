@@ -51,6 +51,22 @@ _COVER_INK: _RGB = (60, 42, 30)
 
 
 @dataclass(frozen=True, slots=True)
+class _BarcodeZone:
+    """KDP back-cover barcode keep-out area, in inches."""
+
+    width_in: float
+    height_in: float
+    inset_in: float
+
+
+# KDP overlays an EAN barcode on the back cover; this artwork keep-out zone
+# must stay clear — 2.0" x 1.2", inset 0.25" from the back cover's outer
+# bottom-right corner, which in the flat back|spine|front spread is the back
+# panel's bottom-right (spine-side) corner.
+BARCODE_CLEAR_ZONE = _BarcodeZone(width_in=2.0, height_in=1.2, inset_in=0.25)
+
+
+@dataclass(frozen=True, slots=True)
 class CoverLayout:
     """Pixel geometry of a wrap cover — back, spine, and front columns."""
 
@@ -392,6 +408,16 @@ def _draw_thumbnails(
         canvas_img.paste(page, (cx + inset, top_y + inset))
 
 
+def _barcode_zone_px(layout: CoverLayout) -> tuple[int, int, int, int]:
+    """Back-cover barcode keep-out rectangle (x0, y0, x1, y1) in canvas pixels."""
+    inset = round(BARCODE_CLEAR_ZONE.inset_in * layout.dpi)
+    zone_w = round(BARCODE_CLEAR_ZONE.width_in * layout.dpi)
+    zone_h = round(BARCODE_CLEAR_ZONE.height_in * layout.dpi)
+    x1 = layout.back[1] - inset
+    y1 = layout.height - layout.bleed_px - inset
+    return x1 - zone_w, y1 - zone_h, x1, y1
+
+
 def _draw_back(
     canvas_img: Image.Image,
     draw: ImageDraw.ImageDraw,
@@ -458,10 +484,12 @@ def _draw_back(
     author_font = _font(fonts.body_bold, round(width * 0.044))
     author_y = y1 - round(width * 0.05)
 
-    # Interior-page previews fill the band between the bullets and the author.
+    # Interior-page previews fill the band between the bullets and the author,
+    # held clear of the KDP barcode zone in the back cover's bottom-right.
     if thumbnails:
+        _, barcode_top, _, _ = _barcode_zone_px(layout)
         band_top = y + round(width * 0.035)
-        band_bot = author_y - round(width * 0.035)
+        band_bot = min(author_y - round(width * 0.035), barcode_top - round(width * 0.025))
         gap = round(width * 0.038)
         cell = int(min((width - 2 * gap) // 3, band_bot - band_top, round(width * 0.30)))
         if cell > 80:
