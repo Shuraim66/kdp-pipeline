@@ -1,0 +1,92 @@
+# Bernese mountain dog test niche — exercises the new pawpress imprint, the
+# low_content flag, and the composition_retry_prompt_suffix in one config.
+# Not for production publishing; used by the verification protocol's
+# new-imprint dry-run.
+
+slug: test_bernese_v1
+niche: bernese_mountain_dogs
+imprint: pawpress
+
+book:
+  trim_size: "8.5x8.5"
+  page_count: 24
+  price_usd: 9.99
+  target_audience: "dog lovers, adult coloring enthusiasts, Bernese owners"
+
+style:
+  art_style: >
+    bold and easy coloring book line art, pure black line art on a white
+    background, friendly and warm, uniform medium-bold black line weight,
+    simple shapes with minimal interior detail, single subject filling most
+    of the canvas
+  line_weight: "uniform medium-bold"
+  negative_prompts: >
+    shading, gray tones, hatching, color, fill, photorealistic, fine lines,
+    intricate details, text, letters, numbers, watermarks
+
+subjects:
+  - { name: "a happy Bernese mountain dog puppy with big eyes", kind: character }
+  - { name: "a Bernese mountain dog sitting in an alpine meadow", kind: scene }
+  - { name: "a Bernese mountain dog wearing a flower crown", kind: character }
+  - { name: "a cute Bernese puppy chasing a butterfly", kind: character }
+  - { name: "a sleepy Bernese puppy curled in a wicker basket", kind: character }
+  - { name: "a Bernese puppy with a bandana around its neck", kind: character }
+  - { name: "a Bernese mountain dog with a small wooden cart", kind: scene }
+  - { name: "a Bernese puppy hugging a teddy bear", kind: character }
+  - { name: "a Bernese mountain dog by a Swiss cottage", kind: scene }
+  - { name: "a Bernese puppy looking up with floppy ears", kind: character }
+  - { name: "two Bernese puppies playing tug of war", kind: scene }
+  - { name: "a Bernese mountain dog beside a mountain stream", kind: scene }
+
+variations_per_subject: 2
+
+composition_modifiers:
+  - "centered composition"
+  - "with simple decorative border"
+
+metadata:
+  title_seed: "Bernese Buddies: A Cozy Coloring Book"
+  subtitle_seed: "24 Sweet Bernese Mountain Dog Designs for Calm and Joy"
+  author: "PawPress Studio"
+  keywords_seed:
+    - "bernese mountain dog coloring book"
+    - "dog coloring book for adults"
+    - "puppy coloring book"
+    - "cute dog coloring pages"
+    - "stress relief coloring book"
+    - "dog lover gifts"
+    - "kawaii puppy coloring"
+  categories:
+    - "Books > Crafts, Hobbies & Home > Crafts & Hobbies > Drawing"
+    - "Books > Arts & Photography > Drawing"
+  low_content: false
+
+cover:
+  background_color: "#7a4a2c"
+  accent_color: "#fef6e4"
+  text_color: "#fff8e7"
+  hero_subject: "a sweet bernese mountain dog puppy with big eyes"
+  hero_style: "warm friendly illustration, soft brown tones, simple, no text"
+  font_family: "Fraunces"
+
+generation:
+  model: "fal-ai/flux-lora"
+  image_dimensions: [1000, 1000]
+  num_inference_steps: 28
+  guidance_scale: 3.5
+  loras:
+    - path: "https://huggingface.co/renderartist/coloringbookflux/resolve/main/c0l0ringb00k_Flux_v1_renderartist.safetensors"
+      scale: 1.0
+      name: "coloringbookflux_renderartist"
+
+post_process:
+  mode: minimal
+
+qa:
+  min_white_pct: 85.0
+  max_gray_pct: 12.0
+  required_white_margin_px: 75
+  required_dimensions: [2550, 2550]
+  max_retries_per_slot: 3
+  min_subject_area_ratio: 0.55
+  composition_retry_prompt_suffix: "fill at least 70% of the canvas, centered, with bold thick outlines"

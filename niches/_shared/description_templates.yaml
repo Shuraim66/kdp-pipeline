@@ -1,0 +1,63 @@
+# Description-template rotation pool — six structural skeletons.
+#
+# Each book is deterministically assigned one template by hashing its book.id
+# (see src/config/description_templates.py:pick_template). Claude receives the
+# chosen skeleton as a structural hint, not a literal — it fills the
+# {placeholders} in its own voice. The chosen template id is logged in the
+# book's metadata.json so we can verify spread across the catalogue.
+#
+# Placeholders ({emotional_hook}, {bullet_list}, etc.) are intentionally
+# vague — Claude interprets them per the book's subject + audience.
+
+templates:
+  - id: emotional_lead
+    skeleton: |
+      {emotional_hook}
+
+      Inside, you'll find:
+      {bullet_list}
+
+      {closing_line}
+
+  - id: product_lead
+    skeleton: |
+      {product_description_paragraph}
+
+      Perfect for:
+      {audience_bullets}
+
+      {features_paragraph}
+
+  - id: audience_lead
+    skeleton: |
+      If you love {niche_description}, this coloring book was made for you.
+
+      {what_to_expect_paragraph}
+
+      {features_bullets}
+
+      {closing_cta}
+
+  - id: feature_lead
+    skeleton: |
+      {format_features_paragraph}
+
+      {content_overview}
+
+      {who_its_for}
+
+  - id: scene_evocation
+    skeleton: |
+      {vivid_scene_paragraph}
+
+      Each of the {design_count} hand-curated designs invites you to {experiential_outcome}.
+
+      {features_inline}
+
+  - id: practical_lead
+    skeleton: |
+      A {format_description} featuring {design_count} {design_type} designs.
+
+      {who_its_for_inline}
+
+      {features_bullets}

@@ -749,9 +749,7 @@ def _run_build(yaml_path: str, *, assume_yes: bool, resume: bool, test_images: i
             pdf_dir = output_dir / book.slug / "pdf"
             click.echo("")
             click.echo(f"⛔ Interior + cover built in {pdf_dir}.")
-            click.echo(
-                f"   Review interior.pdf and cover.pdf, then `build --resume {yaml_path}`."
-            )
+            click.echo(f"   Review interior.pdf and cover.pdf, then `build --resume {yaml_path}`.")
             return
 
         # --- Phase E: listing metadata ---
@@ -847,9 +845,13 @@ def build_command(yaml_path: str, assume_yes: bool, resume: bool, test_images: i
     help="Only show books in this status.",
 )
 @click.option("--niche", default=None, help="Only show books in this niche.")
-def list_books_command(status: str | None, niche: str | None) -> None:
-    """List books, newest first, optionally filtered by status and/or niche."""
+@click.option("--imprint", default=None, help="Only show books for this imprint.")
+def list_books_command(status: str | None, niche: str | None, imprint: str | None) -> None:
+    """List books, newest first, optionally filtered by status, niche, or imprint."""
     books = list_books(status=BookStatus(status) if status is not None else None, niche=niche)
+    if imprint is not None:
+        # No DB index on imprint yet — read the stored config; missing means QHP.
+        books = [b for b in books if b.config.get("imprint", "quiet_hours_press") == imprint]
     if not books:
         click.echo("No books match.")
         return

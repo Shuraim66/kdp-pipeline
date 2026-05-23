@@ -15,6 +15,12 @@ slug: example_niche_v1
 # Niche: short free-text label for the theme.
 niche: example
 
+# imprint: OPTIONAL (defaults to "quiet_hours_press"). References
+# imprints/<imprint>.yaml — resolves the publisher line for KDP metadata and
+# the visual style (palette + font families) of the cover. Set to "pawpress"
+# for pet/animal coloring books.
+imprint: quiet_hours_press
+
 book:
   # trim_size: "8.5x8.5" or "8.5x11" (v1 supports only these two).
   trim_size: "8.5x8.5"
@@ -90,6 +96,10 @@ metadata:
   categories:
     - "Books > Category > Subcategory One"
     - "Books > Category > Subcategory Two"
+  # low_content: OPTIONAL (defaults to false). KDP's "Low-Content Book"
+  # listing toggle. Coloring books have unique designed pages, so leave
+  # false. Set true for journals / planners / blank-pages products.
+  low_content: false
 
 cover:
   # Colors: 6-digit hex ( ^#[0-9a-fA-F]{6}$ ).
@@ -127,3 +137,12 @@ qa:
   # --ink-preview` for human review; it is never tied to qa_status and never
   # gates QA (Vision QA does the gating). Intricate niches may widen it.
   ink_density_band: [3.0, 8.0]
+  # min_subject_area_ratio: OPTIONAL (defaults to 0.55). Composition QA pixel
+  # gate — the subject's bounding box of non-white pixels (<240 gray) must
+  # cover at least this fraction of the inner canvas (inside the white-margin
+  # inset). Pages below this ratio are REJECTED_COMPOSITION and retried.
+  min_subject_area_ratio: 0.55
+  # composition_retry_prompt_suffix: OPTIONAL (defaults to ""). Niche hint
+  # appended to the image prompt when a slot's previous attempt failed
+  # composition QA. Reuses the existing retry mechanism — no separate loop.
+  composition_retry_prompt_suffix: "fill at least 70% of the canvas, centered, with bold thick outlines"

@@ -86,24 +86,46 @@ def test_expand_slots_numbers_sequentially(niche_config) -> None:
 # --- seed assignment ---------------------------------------------------------
 
 
-def test_unique_seeds_per_slot(niche_config) -> None:
+def test_unique_seeds_per_slot(niche_config, make_book) -> None:
     # Regression: a subject's two variations must not render from the same
     # seed — that collapses them into near-identical images. The seed must be
-    # unique per (slot, attempt).
+    # unique per (slot, attempt) — both with and without `fixed_seed`.
     plan = plan_generation(niche_config, [])
     assert len(plan.to_generate) == 50
+    book = make_book()
 
-    attempt0 = {_seed_for(42, p.slot.sequence_num, 0) for p in plan.to_generate}
-    attempt1 = {_seed_for(42, p.slot.sequence_num, 1) for p in plan.to_generate}
+    # Legacy regime (fixed_seed set) — book-1's reproducibility path.
+    attempt0 = {_seed_for(book, 42, p.slot.sequence_num, 0) for p in plan.to_generate}
+    attempt1 = {_seed_for(book, 42, p.slot.sequence_num, 1) for p in plan.to_generate}
+    assert len(attempt0) == 50
+    assert len(attempt1) == 50
+    assert attempt0.isdisjoint(attempt1)
 
-    assert len(attempt0) == 50  # every slot's attempt-0 seed is distinct
-    assert len(attempt1) == 50  # and every attempt-1 seed
-    assert attempt0.isdisjoint(attempt1)  # no seed reused across attempts
+    # Default regime (fixed_seed=None) — per-book namespace via book.seed_prefix.
+    attempt0b = {_seed_for(book, None, p.slot.sequence_num, 0) for p in plan.to_generate}
+    attempt1b = {_seed_for(book, None, p.slot.sequence_num, 1) for p in plan.to_generate}
+    assert len(attempt0b) == 50
+    assert len(attempt1b) == 50
+    assert attempt0b.isdisjoint(attempt1b)
 
 
-def test_seed_is_none_without_a_fixed_seed() -> None:
-    # A niche that pins no seed leaves seed selection to Fal.
-    assert _seed_for(None, 7, 0) is None
+def test_seed_without_fixed_seed_uses_book_namespace(make_book) -> None:
+    # A niche that pins no seed gets a per-book seed namespace from book.id —
+    # NOT None. Each book renders distinct outputs for the same slot/attempt.
+    book_a = make_book()
+    book_b = make_book()
+    assert book_a.seed_prefix != book_b.seed_prefix  # vanishingly unlikely tie
+    assert _seed_for(book_a, None, 7, 0) == book_a.seed_prefix * 10000 + 7
+    assert _seed_for(book_a, None, 7, 1) == book_a.seed_prefix * 10000 + 100 + 7
+    assert _seed_for(book_a, None, 7, 0) != _seed_for(book_b, None, 7, 0)
+
+
+def test_seed_with_fixed_seed_uses_legacy_formula(make_book) -> None:
+    # Bit-for-bit regression-pin of book-1's seed derivation.
+    book = make_book()
+    assert _seed_for(book, 42, 7, 0) == 42 + 7
+    assert _seed_for(book, 42, 7, 1) == 42 + 7 + 1000
+    assert _seed_for(book, 42, 0, 0) == 42
 
 
 # --- plan_generation ---------------------------------------------------------
@@ -149,6 +171,46 @@ def test_plan_requeues_rejected_with_retries(niche_config, make_image) -> None:
     assert queued[0].retry_attempt == 1
     assert queued[0].retry_of_image_id == rejected.id
     assert plan.exhausted == []
+
+
+def test_plan_appends_composition_suffix_to_retry_after_composition_reject(
+    niche_config, make_image
+) -> None:
+    config = niche_config.model_copy(
+        update={
+            "qa": niche_config.qa.model_copy(
+                update={"composition_retry_prompt_suffix": "FILL_THE_CANVAS_HINT"}
+            )
+        }
+    )
+    rejected = make_image(
+        sequence_num=0,
+        qa_status=ImageQAStatus.REJECTED_COMPOSITION,
+        retry_attempt=0,
+    )
+    plan = plan_generation(config, [rejected])
+    queued = {p.slot.sequence_num: p for p in plan.to_generate}
+    assert queued[0].prompt.endswith(", FILL_THE_CANVAS_HINT")
+
+
+def test_plan_does_not_append_composition_suffix_after_other_rejections(
+    niche_config, make_image
+) -> None:
+    config = niche_config.model_copy(
+        update={
+            "qa": niche_config.qa.model_copy(
+                update={"composition_retry_prompt_suffix": "FILL_THE_CANVAS_HINT"}
+            )
+        }
+    )
+    rejected = make_image(
+        sequence_num=0,
+        qa_status=ImageQAStatus.REJECTED_WHITE_PCT,  # not a composition rejection
+        retry_attempt=0,
+    )
+    plan = plan_generation(config, [rejected])
+    queued = {p.slot.sequence_num: p for p in plan.to_generate}
+    assert "FILL_THE_CANVAS_HINT" not in queued[0].prompt
 
 
 def test_plan_marks_exhausted_slots(niche_config, make_image) -> None:

@@ -17,6 +17,12 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from src.config.description_templates import (
+    DescriptionTemplate,
+    pick_template,
+    skeleton_ngram_overlap,
+)
+from src.config.imprint import load_imprint
 from src.config.schema import NicheConfig
 from src.db.models import Book, BookStatus
 from src.db.repos.books import transition_status, update_metadata
@@ -35,6 +41,11 @@ _DESCRIPTION_MAX = 2000
 _KEYWORD_COUNT = 7
 _KEYWORD_MAX_CHARS = 50
 _REQUIRED_FIELDS = ("title", "subtitle", "description", "keywords", "categories")
+
+# Overlap threshold above which Claude is suspected of over-copying the
+# structural skeleton (e.g. leaving {placeholders} verbatim or echoing whole
+# sentences). v1: warn for manual review; no auto-retry.
+_SKELETON_OVERLAP_WARN = 0.60
 
 _SYSTEM_PROMPT = (
     "You generate Amazon KDP book listing metadata. You respond with valid "
@@ -63,6 +74,7 @@ SEEDS (improve them, don't copy verbatim):
 - Subtitle: {subtitle_seed}
 - Keywords: {keywords_seed}
 
+{template_block}
 OUTPUT FORMAT (JSON only):
 {{
   "title": "...",
@@ -83,6 +95,8 @@ _CHECKLIST_TEMPLATE = """# KDP Upload Checklist — {title}
 - **Subtitle**: {subtitle}
 - **Series**: (leave blank for v1)
 - **Author**: {author}
+- **Publisher**: {publisher}
+- **Imprint**: {imprint_name}
 - **Description**: (see description.txt)
 - **Keywords** (7 total):
 {keywords_block}
@@ -90,6 +104,7 @@ _CHECKLIST_TEMPLATE = """# KDP Upload Checklist — {title}
 {categories_block}
 - **Age range**: 16+
 - **Language**: English
+- **Low-content book**: {low_content_label}
 - **Publishing rights**: I own the copyright
 
 ## Print settings
@@ -133,12 +148,36 @@ class BookMetadata:
     description: str
     keywords: list[str]
     categories: list[str]
+    # Set by `generate_metadata` from the rotated description template; empty
+    # when the metadata was constructed directly (e.g. in tests).
+    description_template_id: str = ""
+    description_skeleton_overlap: float = 0.0
+
+
+def _render_template_block(template: DescriptionTemplate) -> str:
+    return (
+        "TEMPLATE TO ADAPT (use as a structural skeleton, not verbatim — "
+        "rewrite each section in your own voice, do NOT leave any "
+        "{placeholders} literal in the output):\n\n"
+        f"{template.skeleton}"
+    )
 
 
 def build_metadata_prompt(
-    config: NicheConfig, *, prior_errors: list[str] | None = None
+    config: NicheConfig,
+    *,
+    book_id: UUID,
+    prior_errors: list[str] | None = None,
 ) -> tuple[str, str]:
-    """Return the ``(system, user)`` prompt pair for the metadata call."""
+    """Return the ``(system, user)`` prompt pair for the metadata call.
+
+    The rotated description-template skeleton (deterministic per ``book_id``)
+    is injected as a structural hint; Claude is instructed to adapt, not copy.
+    """
+    template = pick_template(book_id)
+    # The skeleton text contains literal `{placeholders}` that must survive
+    # str.format(). Python's format() does not recurse into substituted
+    # values, so passing `template_block=` with raw braces is safe.
     user = _USER_TEMPLATE.format(
         niche=config.niche,
         audience=config.book.target_audience,
@@ -149,6 +188,7 @@ def build_metadata_prompt(
         title_seed=config.metadata.title_seed,
         subtitle_seed=config.metadata.subtitle_seed,
         keywords_seed=", ".join(config.metadata.keywords_seed),
+        template_block=_render_template_block(template),
     )
     if prior_errors:
         problems = "\n".join(f"- {error}" for error in prior_errors)
@@ -200,13 +240,20 @@ async def generate_metadata(
     provider: AnthropicProvider,
     config: NicheConfig,
     *,
-    book_id: UUID | None = None,
+    book_id: UUID,
     max_attempts: int = _MAX_ATTEMPTS,
 ) -> tuple[BookMetadata, AnthropicResult]:
-    """Generate listing metadata, retrying with the validation errors fed back."""
+    """Generate listing metadata, retrying with the validation errors fed back.
+
+    The book's description-template id (rotated by `book_id`) and the n-gram
+    overlap of the generated description against that skeleton are captured on
+    the returned BookMetadata; overlap above `_SKELETON_OVERLAP_WARN` emits a
+    `logger.warning` for manual review (v1: no auto-retry on this signal).
+    """
+    template = pick_template(book_id)
     errors: list[str] = []
     for attempt in range(1, max_attempts + 1):
-        system, user = build_metadata_prompt(config, prior_errors=errors or None)
+        system, user = build_metadata_prompt(config, book_id=book_id, prior_errors=errors or None)
         try:
             data, result = await provider.generate_json(
                 prompt=user,
@@ -222,6 +269,15 @@ async def generate_metadata(
         errors = validate_metadata(data, config)
         if not errors:
             logger.info("metadata generated and validated on attempt {}", attempt)
+            overlap = skeleton_ngram_overlap(data["description"], template.skeleton)
+            if overlap > _SKELETON_OVERLAP_WARN:
+                logger.warning(
+                    "description n-gram overlap with skeleton {!r} is "
+                    "{:.0%} (> {:.0%}) — review manually for over-templating",
+                    template.id,
+                    overlap,
+                    _SKELETON_OVERLAP_WARN,
+                )
             return (
                 BookMetadata(
                     title=data["title"],
@@ -229,6 +285,8 @@ async def generate_metadata(
                     description=data["description"],
                     keywords=list(data["keywords"]),
                     categories=list(data["categories"]),
+                    description_template_id=template.id,
+                    description_skeleton_overlap=round(overlap, 4),
                 ),
                 result,
             )
@@ -244,13 +302,17 @@ def build_checklist(
     """Render the ``kdp_checklist.md`` content for a book."""
     trim_w, trim_h = parse_trim_size(config.book.trim_size)
     cover = compute_cover_dimensions(interior_page_count, trim_w, trim_h)
+    imprint = load_imprint(config.imprint)
     return _CHECKLIST_TEMPLATE.format(
         title=metadata.title,
         slug=book.slug,
         subtitle=metadata.subtitle,
         author=config.metadata.author,
+        publisher=imprint.publisher_field,
+        imprint_name=imprint.name,
         keywords_block="\n".join(f"  - {kw}" for kw in metadata.keywords),
         categories_block="\n".join(f"  - {cat}" for cat in metadata.categories),
+        low_content_label="Yes" if config.metadata.low_content else "No",
         trim=config.book.trim_size.replace("x", " x "),
         page_count=interior_page_count,
         price=f"{config.book.price_usd:.2f}",
@@ -277,13 +339,19 @@ def persist_metadata(
     )
     book_dir = output_dir / book.slug
     book_dir.mkdir(parents=True, exist_ok=True)
+    imprint = load_imprint(config.imprint)
     payload = {
         "title": metadata.title,
         "subtitle": metadata.subtitle,
         "author": config.metadata.author,
+        "publisher": imprint.publisher_field,
+        "imprint": imprint.name,
         "description": metadata.description,
         "keywords": metadata.keywords,
         "categories": metadata.categories,
+        "low_content": config.metadata.low_content,
+        "description_template_id": metadata.description_template_id,
+        "description_skeleton_overlap": metadata.description_skeleton_overlap,
     }
     (book_dir / "metadata.json").write_text(
         json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -307,6 +375,7 @@ def run_metadata(
     if book.status == BookStatus.ASSEMBLING:
         transition_status(book.id, BookStatus.METADATA_PENDING)
     metadata, _result = asyncio.run(generate_metadata(provider, config, book_id=book.id))
+    # generate_metadata already needs book_id for template selection.
     persist_metadata(book, config, metadata, output_dir=output_dir)
     transition_status(book.id, BookStatus.READY)
     return metadata

@@ -26,6 +26,7 @@ from src.generators.images import execute_plan, plan_generation
 from src.providers.anthropic import AnthropicProvider
 from src.providers.fal import FalProvider
 from src.qa import vision_qa
+from src.qa.composition_qa import check_composition
 from src.qa.image_qa import evaluate_image
 from src.utils.logging import logger
 
@@ -50,7 +51,12 @@ def _counts(images: list[Image]) -> dict[str, int]:
 
 
 def _qa_pending(book_id: UUID, qa: QASpec) -> int:
-    """Evaluate every still-pending image of a book; return how many."""
+    """Evaluate every still-pending image of a book; return how many.
+
+    Pipeline per image: pixel QA → (only if pixel-passed) composition QA. A
+    composition rejection demotes the verdict to REJECTED_COMPOSITION; pixel
+    failures are never overridden — downstream gates inherit upstream verdicts.
+    """
     pending = [image for image in list_images(book_id) if image.qa_status == ImageQAStatus.PENDING]
     for image in pending:
         if image.local_path is None:
@@ -60,14 +66,26 @@ def _qa_pending(book_id: UUID, qa: QASpec) -> int:
                 {"reason": "image has no local file on disk"},
             )
             continue
-        result = evaluate_image(Path(image.local_path), qa)
-        update_qa(image.id, result.status, result.metrics())
-        logger.debug(
-            "QA slot {} attempt {}: {}",
-            image.sequence_num,
-            image.retry_attempt,
-            result.status,
-        )
+        path = Path(image.local_path)
+        pixel = evaluate_image(path, qa)
+        if pixel.status == ImageQAStatus.PASSED:
+            comp = check_composition(path, qa)
+            update_qa(image.id, comp.status, {**pixel.metrics(), **comp.metrics()})
+            logger.debug(
+                "QA slot {} attempt {}: {} (subject area {:.1%})",
+                image.sequence_num,
+                image.retry_attempt,
+                comp.status,
+                comp.area_ratio,
+            )
+        else:
+            update_qa(image.id, pixel.status, pixel.metrics())
+            logger.debug(
+                "QA slot {} attempt {}: {}",
+                image.sequence_num,
+                image.retry_attempt,
+                pixel.status,
+            )
     return len(pending)
 
 

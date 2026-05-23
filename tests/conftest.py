@@ -81,6 +81,10 @@ def make_niche_config() -> Callable[..., NicheConfig]:
                 "required_white_margin_px": 4,
                 "required_dimensions": list(dimensions),
                 "max_retries_per_slot": max_retries,
+                # Most existing tests use tiny synthetic images that wouldn't
+                # clear the production composition gate. Default to permissive
+                # here; specific composition-QA tests override.
+                "min_subject_area_ratio": 0.01,
             },
         }
         return NicheConfig.model_validate(data)

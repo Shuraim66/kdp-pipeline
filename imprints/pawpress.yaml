@@ -1,0 +1,13 @@
+# PawPress — pet / animal coloring books (dog breeds, cats, woodland animals).
+# Distinct palette (warm_friendly: brighter cream, chocolate-brown accents,
+# warm navy ink) so PawPress covers read clearly different from QHP. Font
+# Inter not yet in assets/fonts/ — falls back to Open Sans for now.
+
+name: PawPress
+publisher_field: PawPress Books
+author_default: PawPress Studio
+visual_style:
+  cover_font_primary: "Fraunces"
+  cover_font_secondary: "Inter"
+  cover_palette_name: warm_friendly
+  back_cover_template: friendly_v1

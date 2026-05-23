@@ -42,6 +42,10 @@ class MetadataSpec(_Strict):
     author: str
     keywords_seed: list[str] = Field(min_length=1, max_length=7)
     categories: list[str] = Field(min_length=2, max_length=2)
+    # KDP's "Low-Content Book" listing toggle. Our coloring books are NOT
+    # low-content (they have unique, designed interior pages); this defaults
+    # to False. Set true for journals / planners / blank-pages products.
+    low_content: bool = False
 
 
 class CoverSpec(_Strict):
@@ -97,6 +101,15 @@ class QASpec(_Strict):
     # it is never tied to `qa_status` and never gates QA. The default suits
     # Bold & Easy niches; an intricate niche can widen the upper bound.
     ink_density_band: tuple[float, float] = (3.0, 8.0)
+    # Composition QA threshold: the subject's bounding box must cover at least
+    # this fraction of the inner canvas (inset by `required_white_margin_px`).
+    # 0.55 matches the user-validated calibration on book 1's small-subject
+    # pages. Set tighter for niches with consistently large subjects.
+    min_subject_area_ratio: float = 0.55
+    # Optional suffix appended to the regenerated image prompt when the
+    # previous attempt was REJECTED_COMPOSITION. Niche-tunable hint, e.g.
+    # "fill at least 70% of the canvas, centered, with bold thick outlines".
+    composition_retry_prompt_suffix: str = ""
 
     @model_validator(mode="after")
     def _check_ink_density_band(self) -> QASpec:
@@ -106,6 +119,15 @@ class QASpec(_Strict):
             raise ValueError(
                 "qa.ink_density_band must be [low, high] with 0 <= low < high <= 100, "
                 f"got {list(self.ink_density_band)}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _check_min_subject_area_ratio(self) -> QASpec:
+        """The ratio must be in (0, 1] — a fraction of inner canvas area."""
+        if not 0.0 < self.min_subject_area_ratio <= 1.0:
+            raise ValueError(
+                f"qa.min_subject_area_ratio must be in (0, 1], got {self.min_subject_area_ratio}"
             )
         return self
 
@@ -138,6 +160,10 @@ class NicheConfig(_Strict):
 
     slug: Slug
     niche: str
+    # Imprint slug — references imprints/<imprint>.yaml. Default keeps existing
+    # niches valid; the imprint resolves the publisher line and the cover's
+    # visual identity (palette + font families) at use time.
+    imprint: Slug = "quiet_hours_press"
     book: BookSpec
     style: StyleSpec
     subjects: list[Subject] = Field(min_length=1)

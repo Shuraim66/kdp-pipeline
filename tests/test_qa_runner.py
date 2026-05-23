@@ -252,6 +252,37 @@ def _seed_images(config, book: Book, output_dir: Path, failing, make_image) -> l
 # --- run_qa ------------------------------------------------------------------
 
 
+def test_qa_pending_demotes_pixel_passed_image_failing_composition(
+    make_niche_config, make_book, make_image, tmp_path, monkeypatch
+) -> None:
+    # Pipeline order: pixel QA → (only if PASSED) composition QA → demotion.
+    # `_clean_png` paints a tiny ~2% bbox; a strict 0.5 threshold trips it.
+    from src.qa.runner import _qa_pending
+
+    base = make_niche_config()
+    config = base.model_copy(
+        update={"qa": base.qa.model_copy(update={"min_subject_area_ratio": 0.5})}
+    )
+    book = make_book(slug=_SLUG, status=BS.GENERATION_DONE)
+    img_path = tmp_path / "tiny.png"
+    img_path.write_bytes(_clean_png(64, 64))
+    image = make_image(
+        book_id=book.id,
+        sequence_num=0,
+        qa_status=ImageQAStatus.PENDING,
+        local_path=str(img_path),
+        retry_attempt=0,
+    )
+    store = _Store([image])
+    _install_store(monkeypatch, store)
+
+    _qa_pending(book.id, config.qa)
+
+    updated = store.list_images(book.id)[0]
+    assert updated.qa_status == ImageQAStatus.REJECTED_COMPOSITION
+    assert (updated.qa_metrics or {}).get("subject_area_ratio") is not None
+
+
 def test_run_qa_all_pass_marks_done(
     make_niche_config, make_book, make_image, tmp_path, monkeypatch
 ) -> None:

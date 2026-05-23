@@ -379,3 +379,90 @@ throwaway scripts, not the `generate-images` / `run-qa` pipeline, so the
 database holds zero `vision_qa_prompt_hint` rows. The first real signal arrives
 after the first full 50-image book run — **plan: run `analyze-prompt-hints` on
 that book to inform book 2's subject list.**
+
+
+## Composition QA — subject-area ratio
+
+`src/qa/composition_qa.py`. After pixel QA returns `PASSED`, this pixel-cheap
+gate measures the bounding box of all non-white pixels (grayscale `< 240`) and
+demotes the verdict to `REJECTED_COMPOSITION` when `bbox_area /
+inner_canvas_area < qa.min_subject_area_ratio`. The existing retry loop
+regenerates demoted slots; when a niche sets `qa.composition_retry_prompt_suffix`,
+that hint is appended to the regenerated prompt (one extra line in
+`plan_generation`).
+
+### How 0.55 was chosen
+
+Book 1 (`cottagecore_mushrooms_v1`) shipped with several pages whose subject
+floated at < 30% of the canvas (small mushroom, tiny birdhouse, small owl).
+0.55 catches those without flagging the well-composed ~60–80% pages — the
+target whitespace-balance band Vision QA also wants. Run
+`composition-preview` (the calibration script in verification step 6) against
+any new niche before publishing if the subject mix differs noticeably from
+cottagecore.
+
+### Per-niche tuning
+
+- Niches with consistently large subjects (e.g. a single character per page):
+  raise to `0.60` or higher; small lapses are rarer.
+- Niches with naturally small subjects (icons, ornaments, tiny critters):
+  lower to `0.40` — the gate is structural, not aesthetic.
+- Bold & Easy niches: keep at the default; small subjects on white look like
+  printing errors at trim size.
+
+### Why a separate pixel gate, not a Vision QA red flag
+
+Vision QA costs ~$0.014/page (Claude Sonnet). Composition QA is pure pixel
+arithmetic — effectively free. Catching a 5% subject before the Vision QA
+call saves the API spend on a page the buyer would skip anyway, and reduces
+the QA round count because the slot regenerates with a targeted prompt hint.
+
+### What this gate does NOT see (intentional)
+
+Composition QA only runs on pages that pass pixel QA (`runner.py:_qa_pending`
+calls `check_composition` inside `if pixel.status == PASSED`). A page rejected
+upstream by pixel QA (white-margin breach, gray fill, resolution failure)
+never reaches composition QA, so its retry will NOT carry the composition
+suffix — only pixel-failure feedback. This is intentional: downstream gates
+inherit upstream verdicts. In practice, pixel rejections regenerate to a
+clean page first, which then hits composition QA on the next round if still
+small — the loop self-corrects across rounds, not within one round.
+
+## Seed strategy — per-book namespace via `Book.seed_prefix`
+
+`src/db/models.py` + `src/generators/images.py:_seed_for`. Two regimes co-exist;
+the niche's `generation.fixed_seed` field selects between them.
+
+### Legacy (book 1, `fixed_seed: 42`)
+
+`niches/cottagecore_mushrooms_v1.yaml` pins `fixed_seed: 42`. The seed for a
+(slot, attempt) is `42 + sequence_num + retry_attempt * 1000`. This is the
+formula book 1's images were rendered against and **must stay pinned** so a
+re-render (e.g. for a print fix) reproduces book 1 bit-for-bit. Do not change
+the YAML unless re-rendering is intentional.
+
+### Default (book 2+, per-book namespace)
+
+New niches leave `fixed_seed: null`. The seed becomes
+`book.seed_prefix * 10000 + retry_attempt * 100 + sequence_num`, where
+`book.seed_prefix = int(book.id.hex[:6], 16)` is a stable per-book integer
+in `[0, 16^6)`. Two books from the same niche then render visibly distinct
+outputs because their seed namespaces don't overlap — important when scaling
+to 3-4 books/week across 2 imprints (publishing too many near-identical
+images from one prompt+seed combo invites Amazon's AI-content review). The
+`* 10000` keeps the per-book offset on its own high band; the `retry_attempt
+* 100` multiplier separates re-rolls from slot indices (the schema caps
+`book.page_count` at 100, so `retry * 100` cannot collide with any
+`sequence_num`).
+
+### When to set `fixed_seed` manually
+
+- Re-rendering an existing book bit-for-bit (the book-1 case above).
+- A/B testing a single niche under deliberate seed control (e.g. comparing
+  prompt variants on the same noise).
+- Debug runs where you want noise determinism across machines.
+
+For everything else (new books in production), leave `fixed_seed: null`.
+Every new cottagecore book should be a **new YAML file** (e.g.
+`cottagecore_mushrooms_v2.yaml`) with `fixed_seed: null` — do NOT edit
+`_v1.yaml` and clobber book 1's seeds.

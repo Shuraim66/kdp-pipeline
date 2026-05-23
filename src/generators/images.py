@@ -100,9 +100,16 @@ def expand_slots(config: NicheConfig) -> list[Slot]:
 
 
 def _planned(
-    config: NicheConfig, slot: Slot, *, retry_attempt: int, retry_of: UUID | None
+    config: NicheConfig,
+    slot: Slot,
+    *,
+    retry_attempt: int,
+    retry_of: UUID | None,
+    prompt_suffix: str | None = None,
 ) -> PlannedImage:
     prompt, negative_prompt = build_image_prompt(config, slot.subject, slot.variation_idx)
+    if prompt_suffix:
+        prompt = f"{prompt}, {prompt_suffix}"
     return PlannedImage(
         slot=slot,
         retry_attempt=retry_attempt,
@@ -147,12 +154,20 @@ def plan_generation(
             # Rendered but not yet QA'd — not this command's job to redo.
             skipped += 1
         elif latest.retry_attempt < max_retries:
+            # Composition-rejected slots get the niche's tunable retry hint
+            # appended to the prompt; other rejections retry the bare prompt.
+            suffix = (
+                config.qa.composition_retry_prompt_suffix
+                if latest.qa_status == ImageQAStatus.REJECTED_COMPOSITION
+                else None
+            )
             to_generate.append(
                 _planned(
                     config,
                     slot,
                     retry_attempt=latest.retry_attempt + 1,
                     retry_of=latest.id,
+                    prompt_suffix=suffix,
                 )
             )
         else:
@@ -169,18 +184,33 @@ def plan_generation(
     )
 
 
-def _seed_for(fixed_seed: int | None, sequence_num: int, retry_attempt: int) -> int | None:
-    """The Fal seed for one slot attempt — unique per (slot, attempt).
+def _seed_for(
+    book: Book,
+    fixed_seed: int | None,
+    sequence_num: int,
+    retry_attempt: int,
+) -> int:
+    """The Fal seed for one slot attempt — unique per (book, slot, attempt).
 
-    The `sequence_num` term gives every page its own noise: without it a
-    subject's two variations would render from the same seed and a near-
-    identical prompt, collapsing into duplicate images. The `retry_attempt`
-    term (x1000, clear of any page index for books up to 999 pages) re-rolls a
-    rejected slot. `None` when the niche pins no seed — Fal picks one at random.
+    Two regimes:
+
+    - **Legacy (`fixed_seed is not None`)** — the niche pins a baseline (e.g.
+      ``cottagecore_mushrooms_v1`` ships with ``fixed_seed: 42``). The seed is
+      ``fixed_seed + sequence_num + retry_attempt * 1000``. Use this when
+      regenerating an existing book bit-for-bit (re-rendering for a print fix).
+
+    - **Default (`fixed_seed is None`)** — each book gets its own seed
+      namespace via :pyattr:`Book.seed_prefix` (derived from the UUID). The
+      seed is ``book.seed_prefix * 10000 + retry_attempt * 100 + sequence_num``.
+      The ``* 10000`` puts the per-book offset on its own high band; the
+      ``* 100`` retry multiplier separates re-rolls (max page_count is 100
+      per the schema, so retry * 100 cannot collide with any slot index).
+
+    Always returns an int — Fal needs a concrete seed for both regimes.
     """
-    if fixed_seed is None:
-        return None
-    return fixed_seed + sequence_num + retry_attempt * 1000
+    if fixed_seed is not None:
+        return fixed_seed + sequence_num + retry_attempt * 1000
+    return book.seed_prefix * 10000 + retry_attempt * 100 + sequence_num
 
 
 async def _generate_one(
@@ -193,7 +223,7 @@ async def _generate_one(
     """Render one planned slot, save the PNG, and insert its `images` row."""
     generation = config.generation
     width, height = generation.image_dimensions
-    seed = _seed_for(generation.fixed_seed, planned.slot.sequence_num, planned.retry_attempt)
+    seed = _seed_for(book, generation.fixed_seed, planned.slot.sequence_num, planned.retry_attempt)
     # FLUX schnell takes no guidance; a niche signals that with guidance 0.
     guidance = generation.guidance_scale if generation.guidance_scale > 0 else None
     # `loras` and `negative_prompt` are only valid on the fal-ai/flux-lora

@@ -42,6 +42,11 @@ class ImageQAStatus(enum.StrEnum):
     REJECTED_VISION_LINES = "rejected_vision_lines"
     REJECTED_VISION_ANATOMY = "rejected_vision_anatomy"
     REJECTED_VISION_LOWSCORE = "rejected_vision_lowscore"
+    # Composition QA — pixel-level subject-area gate that runs after pixel QA.
+    # Distinct from `rejected_vision_composition` (semantic) — this one is the
+    # cheap structural check: the subject's bounding box covers too little of
+    # the printable canvas.
+    REJECTED_COMPOSITION = "rejected_composition"
 
 
 # The state machine: allowed `current -> {targets}` book status transitions.
@@ -105,6 +110,18 @@ class Book:
     generation_started_at: datetime | None
     generation_finished_at: datetime | None
     published_at: datetime | None
+
+    @property
+    def seed_prefix(self) -> int:
+        """A stable per-book seed namespace derived from `id` (UUID).
+
+        Used by `images.py:_seed_for` when the niche pins no `fixed_seed`. The
+        seed for a (book, slot, retry) is `seed_prefix * 10000 + retry_attempt
+        * 100 + sequence_num`, so books with the same niche still produce
+        visibly distinct outputs across runs (no shared 42 baseline). Range
+        ``[0, 16^6) ≈ 16.7M`` keeps `seed_prefix * 10000` within int64.
+        """
+        return int(self.id.hex[:6], 16)
 
 
 @dataclass(frozen=True, slots=True)

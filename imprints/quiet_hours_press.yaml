@@ -1,0 +1,14 @@
+# Quiet Hours Press — the default imprint. Cottagecore / aesthetic-niche
+# coloring books (mushroom cottages, woodland scenes, vintage tea aesthetics).
+# Font primary "Cormorant Garamond" is the intended look; the file is not yet
+# in assets/fonts/, so the loader falls back to Fraunces with a logger warning
+# until Cormorant ships. Same for Inter -> Open Sans.
+
+name: Quiet Hours Press
+publisher_field: Quiet Hours Press
+author_default: Quiet Hours Studio
+visual_style:
+  cover_font_primary: "Cormorant Garamond"
+  cover_font_secondary: "Inter"
+  cover_palette_name: cottagecore_earth
+  back_cover_template: aesthetic_v1

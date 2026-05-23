@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pdfplumber
@@ -95,12 +96,49 @@ def test_check_interior_pdf_flags_wrong_page_count(
     assert any("page count" in issue for issue in result.issues)
 
 
+# For an 8.5x8.5" bleed PDF: 630pt page with 9pt bleed → trim edges sit at
+# (9, 9, 621, 621). KDP's Print Previewer flags text closer than 0.375" to a
+# trim edge on a bleed PDF; we hold to the safer 0.5" = 36pt target.
+_TRIM_INSET_PT = 36.0
+_TRIM_GLYPH_TOL_PT = 1.0  # absorbs sub-point glyph-metric noise
+
+
+def _assert_text_clears_trim(page: Any, page_size_pt: float, bleed_pt: float) -> None:
+    """Every char on the pdfplumber page must sit >= 36pt from every trim edge."""
+    trim_lo = bleed_pt
+    trim_hi = page_size_pt - bleed_pt
+    chars = page.chars
+    assert chars, f"page {page.page_number} has no extractable text"
+    for char in chars:
+        glyph = repr(char["text"])
+        left_clear = char["x0"] - trim_lo
+        right_clear = trim_hi - char["x1"]
+        bot_clear = char["y0"] - trim_lo
+        top_clear = trim_hi - char["y1"]
+        assert left_clear >= _TRIM_INSET_PT - _TRIM_GLYPH_TOL_PT, (
+            f"page {page.page_number} {glyph}: left clearance {left_clear:.2f}pt "
+            f"< required {_TRIM_INSET_PT}pt from trim {trim_lo}"
+        )
+        assert right_clear >= _TRIM_INSET_PT - _TRIM_GLYPH_TOL_PT, (
+            f"page {page.page_number} {glyph}: right clearance {right_clear:.2f}pt "
+            f"< required {_TRIM_INSET_PT}pt from trim {trim_hi}"
+        )
+        assert bot_clear >= _TRIM_INSET_PT - _TRIM_GLYPH_TOL_PT, (
+            f"page {page.page_number} {glyph}: bottom clearance {bot_clear:.2f}pt "
+            f"< required {_TRIM_INSET_PT}pt from trim {trim_lo}"
+        )
+        assert top_clear >= _TRIM_INSET_PT - _TRIM_GLYPH_TOL_PT, (
+            f"page {page.page_number} {glyph}: top clearance {top_clear:.2f}pt "
+            f"< required {_TRIM_INSET_PT}pt from trim {trim_hi}"
+        )
+
+
 def test_copyright_page_text_stays_within_text_safe_margins(
     tmp_path: Path, make_niche_config, make_book
 ) -> None:
     # Regression: KDP's Print Previewer flagged page 2 — its left-aligned
     # copyright/tips text sat only 0.25" from the trim edge. Front-matter text
-    # must clear the trim by the wider 0.5" text-safe margin on all four sides.
+    # must clear the trim by 0.5" (36pt) on all four sides.
     config = make_niche_config()
     book = make_book(slug="t_v1", title="A Test Coloring Book")
     pdf_path = tmp_path / "pdf" / "interior.pdf"
@@ -112,23 +150,36 @@ def test_copyright_page_text_stays_within_text_safe_margins(
         author="A. Tester",
     )
     layout = interior_layout(config.book.trim_size)
-    left = (layout.page_width - layout.text_safe_width) / 2
-    right = layout.page_width - left
-    bottom = (layout.page_height - layout.text_safe_height) / 2
-    top = layout.page_height - bottom
-    tol = 1.0  # absorb sub-point glyph-metric noise; the KDP limit is 9pt looser
 
     with pdfplumber.open(str(pdf_path)) as pdf:
         page = pdf.pages[1]  # page 2 — the copyright / tips page
         assert "Copyright" in (page.extract_text() or "")
-        chars = page.chars
-        assert chars, "page 2 has no extractable text"
-        for char in chars:
-            glyph = repr(char["text"])
-            assert char["x0"] >= left - tol, f"{glyph} crosses the left text margin"
-            assert char["x1"] <= right + tol, f"{glyph} crosses the right text margin"
-            assert char["y0"] >= bottom - tol, f"{glyph} crosses the bottom text margin"
-            assert char["y1"] <= top + tol, f"{glyph} crosses the top text margin"
+        bleed_pt = (layout.page_height - layout.trim_height) / 2
+        _assert_text_clears_trim(page, layout.page_height, bleed_pt)
+
+
+def test_title_page_text_stays_within_text_safe_margins(
+    tmp_path: Path, make_niche_config, make_book
+) -> None:
+    # Recurrence-proofing for page 1: a long future title that wraps must still
+    # clear the same 0.5" trim margin as the copyright page.
+    config = make_niche_config()
+    book = make_book(slug="t_v1", title="A Test Coloring Book")
+    pdf_path = tmp_path / "pdf" / "interior.pdf"
+    build_interior_pdf(
+        book,
+        config,
+        filtered_images=_designs(tmp_path, 3),
+        output_path=pdf_path,
+        author="A. Tester",
+    )
+    layout = interior_layout(config.book.trim_size)
+
+    with pdfplumber.open(str(pdf_path)) as pdf:
+        page = pdf.pages[0]  # page 1 — the title page
+        assert "Test Coloring Book" in (page.extract_text() or "")
+        bleed_pt = (layout.page_height - layout.trim_height) / 2
+        _assert_text_clears_trim(page, layout.page_height, bleed_pt)
 
 
 def test_build_interior_pdf_rejects_an_empty_image_list(

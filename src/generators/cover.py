@@ -17,6 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
+from src.config.imprint import load_imprint
 from src.config.schema import NicheConfig
 from src.db.models import Book
 from src.providers.fal import FalProvider
@@ -43,26 +44,68 @@ _MIN_SPINE_TEXT_IN = 0.25
 
 _RGB = tuple[int, int, int]
 
-# Cover palette. The hero art carries the niche colour; these just harmonise
-# with it — a warm cream plate/card, a thin terracotta keyline, dark-brown ink.
-_PLATE_CREAM: _RGB = (247, 241, 227)
-_TERRACOTTA: _RGB = (181, 92, 60)
-_COVER_INK: _RGB = (60, 42, 30)
+
+@dataclass(frozen=True, slots=True)
+class _Palette:
+    """A cover palette: plate fill, accent (keyline / badge / stars), text ink."""
+
+    plate: _RGB
+    accent: _RGB
+    ink: _RGB
+
+
+# Named palettes — selected per imprint via `imprint.visual_style.cover_palette_name`.
+# Add new entries here; the hero art carries the rest of the niche colour story.
+_PALETTES: dict[str, _Palette] = {
+    "cottagecore_earth": _Palette(
+        plate=(247, 241, 227),
+        accent=(181, 92, 60),
+        ink=(60, 42, 30),
+    ),
+    "warm_friendly": _Palette(
+        plate=(255, 248, 231),
+        accent=(122, 74, 44),
+        ink=(28, 46, 74),
+    ),
+}
+_DEFAULT_PALETTE = "cottagecore_earth"
+
+
+def _resolve_palette(name: str) -> _Palette:
+    """Return the named palette; fall back to the default with a warning."""
+    if name in _PALETTES:
+        return _PALETTES[name]
+    logger.warning(
+        "cover palette {!r} not defined; falling back to {!r}",
+        name,
+        _DEFAULT_PALETTE,
+    )
+    return _PALETTES[_DEFAULT_PALETTE]
 
 
 @dataclass(frozen=True, slots=True)
 class _BarcodeZone:
-    """KDP back-cover barcode keep-out area, in inches."""
+    """KDP back-cover EAN-barcode keep-out area, in inches.
+
+    KDP overlays the barcode automatically at print time; our cover artwork
+    must reserve this rectangle (`width_in` x `height_in`, inset `inset_in`
+    from both axes) so the overlay lands on background, not on a thumbnail
+    or text. In the flat back|spine|front cover spread we deliver to KDP,
+    the zone sits at the back panel's bottom-right (spine-side bottom)
+    corner — i.e. the spine-side bottom of the printed back cover when the
+    book is closed and viewed face-up.
+    """
 
     width_in: float
     height_in: float
     inset_in: float
 
 
-# KDP overlays an EAN barcode on the back cover; this artwork keep-out zone
-# must stay clear — 2.0" x 1.2", inset 0.25" from the back cover's outer
-# bottom-right corner, which in the flat back|spine|front spread is the back
-# panel's bottom-right (spine-side) corner.
+# Reserved keep-out for KDP's auto-overlaid EAN barcode on the back cover.
+# 2.0" x 1.2", inset 0.25" from the back panel's bottom-right corner in the
+# flat spread (= spine-side bottom of the printed back cover). `_barcode_zone_px`
+# resolves it to a pixel rect; `_draw_back` caps the thumbnail row so it does
+# not intrude.
 BARCODE_CLEAR_ZONE = _BarcodeZone(width_in=2.0, height_in=1.2, inset_in=0.25)
 
 
@@ -277,6 +320,7 @@ def _draw_front(
     *,
     hero: Image.Image,
     fonts: CoverFonts,
+    palette: _Palette,
 ) -> None:
     """Front panel — hero bled to the trim edges, a cream title plate, a badge."""
     fx0, fx1 = layout.front
@@ -324,8 +368,8 @@ def _draw_front(
     draw.rounded_rectangle(
         (plate_x0, plate_y0, plate_x1, plate_y1),
         radius=round(plate_w * 0.028),
-        fill=_PLATE_CREAM,
-        outline=_TERRACOTTA,
+        fill=palette.plate,
+        outline=palette.accent,
         width=max(3, round(panel_w * 0.003)),
     )
 
@@ -336,7 +380,7 @@ def _draw_front(
         center_x=center_x,
         top_y=plate_y0 + pad_y,
         max_width=inner_w,
-        fill=_COVER_INK,
+        fill=palette.ink,
         spacing=0.96,
     )
     _draw_wrapped(
@@ -346,7 +390,7 @@ def _draw_front(
         center_x=center_x,
         top_y=below + gap,
         max_width=inner_w,
-        fill=_COVER_INK,
+        fill=palette.ink,
         spacing=1.05,
     )
 
@@ -365,13 +409,13 @@ def _draw_front(
         draw.rounded_rectangle(
             (badge_x0, badge_y0, badge_x1, badge_y1),
             radius=badge_h // 2,
-            fill=_TERRACOTTA,
+            fill=palette.accent,
         )
         draw.text(
             (badge_x0 + b_pad_x, badge_y0 + b_pad_y),
             badge,
             font=badge_font,
-            fill=_PLATE_CREAM,
+            fill=palette.plate,
         )
 
 
@@ -384,6 +428,7 @@ def _draw_thumbnails(
     x1: int,
     top_y: int,
     cell: int,
+    palette: _Palette,
 ) -> None:
     """Paste a centred row of framed interior-page previews."""
     if not images or cell <= 0:
@@ -399,8 +444,8 @@ def _draw_thumbnails(
         draw.rounded_rectangle(
             (cx, top_y, cx + cell, top_y + cell),
             radius=round(cell * 0.06),
-            fill=_PLATE_CREAM,
-            outline=_TERRACOTTA,
+            fill=palette.plate,
+            outline=palette.accent,
             width=border,
         )
         with Image.open(path) as handle:
@@ -428,6 +473,7 @@ def _draw_back(
     author: str,
     text_color: _RGB,
     thumbnails: list[Path],
+    palette: _Palette,
 ) -> None:
     x0 = layout.back[0] + layout.safe_px
     x1 = layout.back[1] - layout.safe_px
@@ -477,7 +523,7 @@ def _draw_back(
     y += round(width * 0.05)
     for bullet in bullets:
         mid = y + (b_ascent + b_descent) / 2
-        _draw_star(draw, x0 + star_r, mid, star_r, _TERRACOTTA)
+        _draw_star(draw, x0 + star_r, mid, star_r, palette.accent)
         draw.text((x0 + round(width * 0.06), y), bullet, font=bullet_font, fill=text_color)
         y += b_line
 
@@ -495,7 +541,14 @@ def _draw_back(
         if cell > 80:
             row_top = int(band_top + ((band_bot - band_top) - cell) // 2)
             _draw_thumbnails(
-                canvas_img, draw, images=thumbnails, x0=x0, x1=x1, top_y=row_top, cell=cell
+                canvas_img,
+                draw,
+                images=thumbnails,
+                x0=x0,
+                x1=x1,
+                top_y=row_top,
+                cell=cell,
+                palette=palette,
             )
 
     _draw_centered(draw, author, author_font, center_x=center_x, y=author_y, fill=text_color)
@@ -537,6 +590,7 @@ def compose_cover(
     hero: Image.Image,
     fonts: CoverFonts,
     thumbnails: list[Path],
+    palette: _Palette,
 ) -> Image.Image:
     """Composite the full wrap cover — back, spine, and front."""
     background = _hex_rgb(config.cover.background_color)
@@ -547,9 +601,11 @@ def compose_cover(
     title = config.cover.headline or book.title or config.metadata.title_seed
     author = config.metadata.author
 
-    _draw_back(canvas_img, draw, layout, config, fonts, title, author, text_color, thumbnails)
+    _draw_back(
+        canvas_img, draw, layout, config, fonts, title, author, text_color, thumbnails, palette
+    )
     _draw_spine(canvas_img, layout, title, fonts, text_color)
-    _draw_front(canvas_img, draw, layout, config, hero=hero, fonts=fonts)
+    _draw_front(canvas_img, draw, layout, config, hero=hero, fonts=fonts, palette=palette)
     return canvas_img
 
 
@@ -573,7 +629,12 @@ def build_cover(
     dpi: int = 300,
 ) -> Path:
     """Composite the wrap cover; return its print-ready PDF path."""
-    fonts = load_cover_fonts()
+    imprint = load_imprint(config.imprint)
+    fonts = load_cover_fonts(
+        primary_family=imprint.visual_style.cover_font_primary,
+        secondary_family=imprint.visual_style.cover_font_secondary,
+    )
+    palette = _resolve_palette(imprint.visual_style.cover_palette_name)
     trim_w, trim_h = parse_trim_size(config.book.trim_size)
     layout = cover_layout(interior_page_count, trim_w, trim_h, paper=paper, dpi=dpi)
     with Image.open(hero_path) as handle:
@@ -581,7 +642,9 @@ def build_cover(
 
     filtered = sorted((output_dir / book.slug / "images" / "filtered").glob("*.png"))
     thumbnails = [filtered[i] for i in config.cover.thumbnails if 0 <= i < len(filtered)]
-    composite = compose_cover(book, config, layout, hero=hero, fonts=fonts, thumbnails=thumbnails)
+    composite = compose_cover(
+        book, config, layout, hero=hero, fonts=fonts, thumbnails=thumbnails, palette=palette
+    )
 
     cover_dir = output_dir / book.slug / "cover"
     cover_dir.mkdir(parents=True, exist_ok=True)
