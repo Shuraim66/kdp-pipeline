@@ -63,9 +63,9 @@ _PALETTES: dict[str, _Palette] = {
         ink=(60, 42, 30),
     ),
     "warm_friendly": _Palette(
-        plate=(255, 248, 231),
-        accent=(122, 74, 44),
-        ink=(28, 46, 74),
+        plate=(255, 248, 231),  # #fff8e7  warm cream
+        accent=(122, 74, 44),  # #7a4a2c  chocolate brown — keylines + badges
+        ink=(196, 90, 58),  # #c45a3a  terracotta-rust — text on plate
     ),
 }
 _DEFAULT_PALETTE = "cottagecore_earth"

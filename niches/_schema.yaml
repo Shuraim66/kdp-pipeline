@@ -137,11 +137,13 @@ qa:
   # --ink-preview` for human review; it is never tied to qa_status and never
   # gates QA (Vision QA does the gating). Intricate niches may widen it.
   ink_density_band: [3.0, 8.0]
-  # min_subject_area_ratio: OPTIONAL (defaults to 0.55). Composition QA pixel
+  # min_subject_area_ratio: OPTIONAL (defaults to 0.40). Composition QA pixel
   # gate — the subject's bounding box of non-white pixels (<240 gray) must
   # cover at least this fraction of the inner canvas (inside the white-margin
-  # inset). Pages below this ratio are REJECTED_COMPOSITION and retried.
-  min_subject_area_ratio: 0.55
+  # inset). Pages below this ratio are REJECTED_COMPOSITION and retried. The
+  # default is a retry trigger, not a quality bar; raise for niches with
+  # consistently large subjects (e.g. dog-breed niches may want 0.50).
+  min_subject_area_ratio: 0.40
   # composition_retry_prompt_suffix: OPTIONAL (defaults to ""). Niche hint
   # appended to the image prompt when a slot's previous attempt failed
   # composition QA. Reuses the existing retry mechanism — no separate loop.

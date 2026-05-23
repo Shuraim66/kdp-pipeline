@@ -103,9 +103,11 @@ class QASpec(_Strict):
     ink_density_band: tuple[float, float] = (3.0, 8.0)
     # Composition QA threshold: the subject's bounding box must cover at least
     # this fraction of the inner canvas (inset by `required_white_margin_px`).
-    # 0.55 matches the user-validated calibration on book 1's small-subject
-    # pages. Set tighter for niches with consistently large subjects.
-    min_subject_area_ratio: float = 0.55
+    # 0.40 was calibrated against book 1's 50 filtered images — flags the
+    # three named small-subject pages without punishing kawaii pages with
+    # legitimate whitespace. The gate is a retry trigger, not a quality bar.
+    # Per-niche tunable; dog-breed niches may want 0.50. See CALIBRATION_NOTES.
+    min_subject_area_ratio: float = 0.40
     # Optional suffix appended to the regenerated image prompt when the
     # previous attempt was REJECTED_COMPOSITION. Niche-tunable hint, e.g.
     # "fill at least 70% of the canvas, centered, with bold thick outlines".

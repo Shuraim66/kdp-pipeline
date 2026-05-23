@@ -391,22 +391,42 @@ regenerates demoted slots; when a niche sets `qa.composition_retry_prompt_suffix
 that hint is appended to the regenerated prompt (one extra line in
 `plan_generation`).
 
-### How 0.55 was chosen
+### How 0.40 was chosen
 
-Book 1 (`cottagecore_mushrooms_v1`) shipped with several pages whose subject
-floated at < 30% of the canvas (small mushroom, tiny birdhouse, small owl).
-0.55 catches those without flagging the well-composed ~60–80% pages — the
-target whitespace-balance band Vision QA also wants. Run
-`composition-preview` (the calibration script in verification step 6) against
-any new niche before publishing if the subject mix differs noticeably from
-cottagecore.
+The initial design targeted `0.55` ("subject should be a clear majority of
+the page"). Running the full 50-image calibration against book 1's filtered
+set showed `0.55` would fail 72% (36/50) — far above the 30-40% retry rate
+the gate is designed to absorb. Composition QA is a **retry trigger, not a
+quality bar**; firing on three-quarters of pages would burn Fal calls on
+pages a reasonable buyer accepts.
+
+`0.40` was chosen because:
+
+- The three named small-subject pages from book 1 (filtered `000` / `018` /
+  `028`, ratios 9.5% / 13.1% / 16.9%) all fail comfortably at `0.40`.
+- The 13 pages in the 0.40-0.55 band — many kawaii subjects with legitimate
+  whitespace — are spared unnecessary regeneration.
+- Projected retry rate at `0.40` on book 1's distribution: ~46% (23/50),
+  economically tolerable for the per-page Fal cost.
+
+Book 1's full distribution (margin 75px, threshold 0.40 for reference):
+
+```
+<30% (very small)            16  ← fail
+30-40%                        7  ← fail
+40-55%                       13  ← pass (kept clear of the gate)
+55-70%                       11  ← pass
+70-85%                        3  ← pass
+85%+                          0
+```
 
 ### Per-niche tuning
 
-- Niches with consistently large subjects (e.g. a single character per page):
-  raise to `0.60` or higher; small lapses are rarer.
-- Niches with naturally small subjects (icons, ornaments, tiny critters):
-  lower to `0.40` — the gate is structural, not aesthetic.
+- Dog-breed and other single-character niches (where the subject *should*
+  dominate the page): raise to `0.50` — small lapses are rarer there and
+  catching a few more is worth the extra Fal calls.
+- Niches with naturally tiny subjects (icons, ornaments, scattered florals):
+  stay at `0.40` or lower; the gate is structural, not aesthetic.
 - Bold & Easy niches: keep at the default; small subjects on white look like
   printing errors at trim size.
 
