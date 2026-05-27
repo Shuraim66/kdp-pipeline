@@ -61,7 +61,11 @@ def generate_maze(
     if width_cells <= 0 or height_cells <= 0:
         raise ValueError(f"grid_size cells must be positive: {grid_size}")
 
-    maze = Maze(seed=seed)
+    # Mazelib seeds numpy.random which requires a uint32; book_seed_prefix is
+    # 24-bit (from book.id.hex[:6]) and i is small, but the product overflows
+    # uint32 for prefix > ~430k. Modulo keeps the seed in range while
+    # preserving determinism for any (prefix, i) pair within one book.
+    maze = Maze(seed=seed % (2**32))
     # Mazelib's generators take (H, W) — height first.
     maze.generator = _ALGORITHMS[algorithm](height_cells, width_cells)
     maze.generate()
