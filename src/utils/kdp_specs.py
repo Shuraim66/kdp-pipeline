@@ -142,9 +142,6 @@ def total_interior_pages(config: NicheConfig) -> int:
         extras += 1
     if puzzle_body.front_matter.intro_page:
         extras += 1
-    if (
-        puzzle_body.puzzle.include_solutions
-        and puzzle_body.puzzle.solutions_section == "end"
-    ):
+    if puzzle_body.puzzle.include_solutions and puzzle_body.puzzle.solutions_section == "end":
         extras += 1  # "Solutions" divider page before the solution pages
     return config.book.page_count + extras

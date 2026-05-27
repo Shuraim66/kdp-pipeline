@@ -344,9 +344,7 @@ class NicheConfig(_Strict):
         elif isinstance(self.body, PuzzleBody):
             spec = self.body.puzzle
             solutions_pages = (
-                spec.count
-                if spec.include_solutions and spec.solutions_section == "end"
-                else 0
+                spec.count if spec.include_solutions and spec.solutions_section == "end" else 0
             )
             expected = spec.count + solutions_pages
             if expected != self.book.page_count:

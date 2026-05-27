@@ -54,9 +54,7 @@ def _wrap_text(text: str, font: str, size: float, max_width: float) -> list[str]
     return lines or [""]
 
 
-def draw_title_page(
-    pdf: canvas.Canvas, layout: InteriorLayout, title: str, author: str
-) -> None:
+def draw_title_page(pdf: canvas.Canvas, layout: InteriorLayout, title: str, author: str) -> None:
     """Draw the centred title page — title (Vera Bold 32) + author (Vera 16)."""
     center_x = layout.page_width / 2
     title_lines = _wrap_text(title, FONT_BOLD, TITLE_SIZE, layout.text_safe_width)

@@ -407,7 +407,12 @@ def resolve_book(target: str) -> tuple[Book, NicheConfig]:
         config = load_niche_config(path)
         book = get_book_by_slug(config.slug)
         if book is None:
-            book = create_book(config.slug, config.niche, config_to_dict(config))
+            book = create_book(
+                config.slug,
+                config.niche,
+                config_to_dict(config),
+                book_type=config.body.kind,
+            )
             logger.info("created book {} from {}", config.slug, target)
             return book, config
         if book.config_hash != compute_config_hash(config):

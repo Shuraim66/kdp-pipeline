@@ -59,11 +59,21 @@ def _book_from_row(row: dict[str, Any]) -> Book:
         generation_started_at=row["generation_started_at"],
         generation_finished_at=row["generation_finished_at"],
         published_at=row["published_at"],
+        # Pre-005 rows won't have this column when running an old DB; treat
+        # absent as the historical default rather than KeyError.
+        book_type=row.get("book_type") or "coloring",
     )
 
 
-def create_book(slug: str, niche: str, config: dict[str, Any]) -> Book:
-    """Insert a new book in status `created`. Raises on a duplicate slug."""
+def create_book(
+    slug: str, niche: str, config: dict[str, Any], *, book_type: str = "coloring"
+) -> Book:
+    """Insert a new book in status `created`. Raises on a duplicate slug.
+
+    `book_type` is denormalised from `config["body"]["kind"]`; callers that
+    already know the type pass it explicitly. Default keeps the historical
+    coloring behaviour for any code path that hasn't been book-type-aware yet.
+    """
     config_hash = canonical_hash(config)
     with (
         get_pool().connection() as conn,
@@ -71,9 +81,9 @@ def create_book(slug: str, niche: str, config: dict[str, Any]) -> Book:
         conn.cursor(row_factory=dict_row) as cur,
     ):
         cur.execute(
-            "INSERT INTO books (slug, niche, config, config_hash) "
-            "VALUES (%s, %s, %s, %s) RETURNING *",
-            (slug, niche, Jsonb(config), config_hash),
+            "INSERT INTO books (slug, niche, config, config_hash, book_type) "
+            "VALUES (%s, %s, %s, %s, %s) RETURNING *",
+            (slug, niche, Jsonb(config), config_hash, book_type),
         )
         row = cur.fetchone()
     assert row is not None  # INSERT ... RETURNING always yields one row

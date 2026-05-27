@@ -120,6 +120,7 @@ def make_book() -> Callable[..., Book]:
             "generation_started_at": None,
             "generation_finished_at": None,
             "published_at": None,
+            "book_type": "coloring",
         }
         fields.update(overrides)
         return Book(**fields)

@@ -110,6 +110,10 @@ class Book:
     generation_started_at: datetime | None
     generation_finished_at: datetime | None
     published_at: datetime | None
+    # Denormalised from `config["body"]["kind"]` — single column on `books`
+    # so list_books/show/etc. can filter cheaply without parsing JSONB.
+    # `'coloring'` is the default for backward compat with pre-005 rows.
+    book_type: str = "coloring"
 
     @property
     def seed_prefix(self) -> int:
