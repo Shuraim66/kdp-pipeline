@@ -77,6 +77,7 @@ from src.utils.kdp_specs import (
     compute_cover_dimensions,
     interior_layout,
     parse_trim_size,
+    total_interior_pages,
 )
 from src.utils.line_art import normalize_line_art
 from src.utils.logging import book_log_file, configure_logging
@@ -150,6 +151,14 @@ def validate_niche(yaml_path: str, ink_preview: bool) -> None:
         click.echo(f"ERROR — {yaml_path}: {exc}", err=True)
         raise SystemExit(1) from exc
 
+    if config.coloring is None:
+        click.echo(
+            f"ERROR — {yaml_path}: this is a {config.body.kind!r} book; "
+            "use `puzzle validate-niche` instead.",
+            err=True,
+        )
+        raise SystemExit(1)
+    coloring = config.coloring
     click.echo(f"VALID — {yaml_path}")
     click.echo(f"  slug:        {config.slug}")
     click.echo(f"  niche:       {config.niche}")
@@ -158,9 +167,9 @@ def validate_niche(yaml_path: str, ink_preview: bool) -> None:
         f"{config.book.page_count} pages, ${config.book.price_usd}"
     )
     click.echo(
-        f"  subjects:    {len(config.subjects)} x {config.variations_per_subject} variations"
+        f"  subjects:    {len(coloring.subjects)} x {coloring.variations_per_subject} variations"
     )
-    click.echo(f"  modifiers:   {len(config.composition_modifiers)}")
+    click.echo(f"  modifiers:   {len(coloring.composition_modifiers)}")
     click.echo(f"  keywords:    {len(config.metadata.keywords_seed)}")
     click.echo(f"  config_hash: {compute_config_hash(config)}")
 
@@ -190,9 +199,10 @@ def generate_images(target: str, test_images: int | None, yes: bool) -> None:
         click.echo(f"ERROR — {exc}", err=True)
         raise SystemExit(1) from exc
 
+    coloring = config.require_coloring()
     plan = plan_generation(config, list_images(book.id), limit=test_images)
     test_mode = test_images is not None
-    per_image = cost_for_image(config.generation.model, *config.generation.image_dimensions)
+    per_image = cost_for_image(coloring.generation.model, *coloring.generation.image_dimensions)
     output_dir = get_settings().output_dir
 
     click.echo(f"Book:        {book.slug}  (status: {book.status})")
@@ -465,7 +475,7 @@ def build_cover_command(slug: str, hero: str | None) -> None:
     if book.status == BookStatus.QA_DONE:
         transition_status(book.id, BookStatus.ASSEMBLING)
 
-    interior_pages = config.book.page_count + 2
+    interior_pages = total_interior_pages(config)
     pdf = build_cover(
         book,
         config,
@@ -570,7 +580,7 @@ def _assemble_cover(book: Book, config: NicheConfig, output_dir: Path) -> Path:
         config,
         hero_path=hero_path,
         output_dir=output_dir,
-        interior_page_count=config.book.page_count + 2,
+        interior_page_count=total_interior_pages(config),
     )
 
 
@@ -617,6 +627,14 @@ def _run_build(yaml_path: str, *, assume_yes: bool, resume: bool, test_images: i
         click.echo(f"ERROR — {exc}", err=True)
         raise SystemExit(1) from exc
 
+    if config.coloring is None:
+        click.echo(
+            f"ERROR — {book.slug} is a {config.body.kind!r} book; "
+            "use `puzzle build` for puzzle books.",
+            err=True,
+        )
+        raise SystemExit(1)
+    coloring = config.coloring
     output_dir = get_settings().output_dir
 
     if book.status == BookStatus.FAILED:
@@ -642,7 +660,9 @@ def _run_build(yaml_path: str, *, assume_yes: bool, resume: bool, test_images: i
         if book.status in (BookStatus.CREATED, BookStatus.GENERATING):
             plan = plan_generation(config, list_images(book.id), limit=test_images)
             test_mode = test_images is not None
-            per_image = cost_for_image(config.generation.model, *config.generation.image_dimensions)
+            per_image = cost_for_image(
+                coloring.generation.model, *coloring.generation.image_dimensions
+            )
             est = per_image * len(plan.to_generate)
 
             if plan.exhausted and not test_mode:
@@ -1020,12 +1040,13 @@ async def _ink_preview(
     config: NicheConfig, indices: list[int], provider: FalProvider
 ) -> list[tuple[int, str, float]]:
     """Generate the sampled subjects and measure each page's ink density."""
-    generation = config.generation
+    coloring = config.require_coloring()
+    generation = coloring.generation
     width, height = generation.image_dimensions
     loras = [{"path": lora.path, "scale": lora.scale} for lora in generation.loras]
 
     async def _one(idx: int) -> tuple[int, str, float]:
-        subject = config.subjects[idx]
+        subject = coloring.subjects[idx]
         prompt, negative = build_image_prompt(config, subject, 0)
         result = await provider.generate_image(
             prompt=prompt,
@@ -1041,8 +1062,8 @@ async def _ink_preview(
         line_art = await asyncio.to_thread(
             normalize_line_art,
             result.image_bytes,
-            target_size=config.qa.required_dimensions,
-            mode=config.post_process.mode,
+            target_size=coloring.qa.required_dimensions,
+            mode=coloring.post_process.mode,
         )
         return idx, subject.name, line_art.ink_density_pct
 
@@ -1055,9 +1076,10 @@ def _run_ink_preview(config: NicheConfig) -> None:
     The only part of `validate-niche` that spends money — gated behind the
     `--ink-preview` flag, a cost estimate, and a confirmation.
     """
-    indices = _sample_subject_indices(len(config.subjects))
-    per_image = cost_for_image(config.generation.model, *config.generation.image_dimensions)
-    low, high = config.qa.ink_density_band
+    coloring = config.require_coloring()
+    indices = _sample_subject_indices(len(coloring.subjects))
+    per_image = cost_for_image(coloring.generation.model, *coloring.generation.image_dimensions)
+    low, high = coloring.qa.ink_density_band
     click.echo("")
     click.echo(
         f"Ink-density preview: generate {len(indices)} sample page(s) via "
@@ -1142,14 +1164,22 @@ def _ink_density_band(config: dict[str, Any]) -> tuple[float, float]:
 
     `ink-density` needs only these two numbers, so it reads them straight from
     the stored config dict rather than fully validating it — the report then
-    still works on a book whose config predates a later schema change.
+    still works on a book whose config predates a later schema change. Tries
+    the wrapped form (``body.qa.ink_density_band``) first, then the legacy
+    flat form (``qa.ink_density_band``) — supports both pre- and post-005
+    stored configs.
     """
     default: tuple[float, float] = QASpec.model_fields["ink_density_band"].default
-    try:
-        low, high = config["qa"]["ink_density_band"]
-        return float(low), float(high)
-    except (KeyError, TypeError, ValueError):
-        return default
+    for path in (("body", "qa", "ink_density_band"), ("qa", "ink_density_band")):
+        try:
+            value: Any = config
+            for key in path:
+                value = value[key]
+            low, high = value
+            return float(low), float(high)
+        except (KeyError, TypeError, ValueError):
+            continue
+    return default
 
 
 @cli.command("ink-density")

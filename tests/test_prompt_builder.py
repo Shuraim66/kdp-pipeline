@@ -21,9 +21,10 @@ def test_prompt_is_deterministic(niche_config) -> None:
 
 def test_prompt_contains_subject_and_style(niche_config) -> None:
     prompt, _ = build_image_prompt(niche_config, _subj("a teddy bear"), 0)
+    coloring = niche_config.require_coloring()
     assert "a teddy bear" in prompt
-    assert niche_config.style.art_style.strip() in prompt
-    assert niche_config.style.line_weight in prompt
+    assert coloring.style.art_style.strip() in prompt
+    assert coloring.style.line_weight in prompt
     assert "on a plain white background" in prompt
 
 
@@ -80,7 +81,7 @@ def test_prompt_dispatches_on_subject_kind(make_niche_config) -> None:
 def test_negative_prompt_strengthens_the_style_value(niche_config) -> None:
     _, negative = build_image_prompt(niche_config, _subj("anything"), 3)
     # The niche's own negatives are preserved, with line-quality terms appended.
-    assert niche_config.style.negative_prompts.strip() in negative
+    assert niche_config.require_coloring().style.negative_prompts.strip() in negative
     for term in (
         "thin lines",
         "hairline strokes",
@@ -93,7 +94,7 @@ def test_negative_prompt_strengthens_the_style_value(niche_config) -> None:
 
 
 def test_modifier_cycles_through_variations(niche_config) -> None:
-    modifiers = niche_config.composition_modifiers
+    modifiers = niche_config.require_coloring().composition_modifiers
     for variation_idx in range(len(modifiers) + 2):
         prompt, _ = build_image_prompt(niche_config, _subj("a star"), variation_idx)
         assert modifiers[variation_idx % len(modifiers)] in prompt

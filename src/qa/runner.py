@@ -192,15 +192,16 @@ def run_qa(
     if vision_provider_factory is not None:
         vision_provider_factory()
 
+    coloring = config.require_coloring()
     if book.status == BookStatus.GENERATION_DONE:
         transition_status(book.id, BookStatus.QA_RUNNING)
 
     rounds = 0
     regenerated = 0
     vision_rejected = 0
-    for _ in range(config.qa.max_retries_per_slot + 2):
+    for _ in range(coloring.qa.max_retries_per_slot + 2):
         rounds += 1
-        _qa_pending(book.id, config.qa)
+        _qa_pending(book.id, coloring.qa)
         if vision_provider_factory is not None:
             vision_rejected += _vision_qa_round(book, config, vision_provider_factory())
         plan = plan_generation(config, list_images(book.id))

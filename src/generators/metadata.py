@@ -31,7 +31,11 @@ from src.providers.anthropic import (
     AnthropicProviderError,
     AnthropicResult,
 )
-from src.utils.kdp_specs import compute_cover_dimensions, parse_trim_size
+from src.utils.kdp_specs import (
+    compute_cover_dimensions,
+    parse_trim_size,
+    total_interior_pages,
+)
 from src.utils.logging import logger
 
 _MAX_ATTEMPTS = 3
@@ -175,6 +179,7 @@ def build_metadata_prompt(
     is injected as a structural hint; Claude is instructed to adapt, not copy.
     """
     template = pick_template(book_id)
+    coloring = config.require_coloring()
     # The skeleton text contains literal `{placeholders}` that must survive
     # str.format(). Python's format() does not recurse into substituted
     # values, so passing `template_block=` with raw braces is safe.
@@ -182,7 +187,7 @@ def build_metadata_prompt(
         niche=config.niche,
         audience=config.book.target_audience,
         design_count=config.book.page_count,
-        subjects=", ".join(subject.name for subject in config.subjects),
+        subjects=", ".join(subject.name for subject in coloring.subjects),
         primary_keyword=config.metadata.keywords_seed[0],
         categories=" | ".join(config.metadata.categories),
         title_seed=config.metadata.title_seed,
@@ -325,7 +330,7 @@ def persist_metadata(
     book: Book, config: NicheConfig, metadata: BookMetadata, *, output_dir: Path
 ) -> None:
     """Write metadata to the database and to the book's output directory."""
-    interior_page_count = config.book.page_count + 2
+    interior_page_count = total_interior_pages(config)
     update_metadata(
         book.id,
         title=metadata.title,

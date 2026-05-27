@@ -51,23 +51,24 @@ def build_image_prompt(
     invented character. Negations live only in the negative prompt, and "white
     background" appears once, near the end.
     """
-    modifiers = config.composition_modifiers
+    coloring = config.require_coloring()
+    modifiers = coloring.composition_modifiers
     modifier = modifiers[variation_idx % len(modifiers)]
-    triggers = [lora.trigger for lora in config.generation.loras if lora.trigger]
+    triggers = [lora.trigger for lora in coloring.generation.loras if lora.trigger]
     prompt = ", ".join(
         [
             *triggers,
             subject.name,
             _KIND_DIRECTIVE[subject.kind],
             "a single coherent illustration with fully connected outlines",
-            config.style.art_style.strip(),
+            coloring.style.art_style.strip(),
             "in a cute simple children's cartoon style",
-            f"{config.style.line_weight} black outlines",
+            f"{coloring.style.line_weight} black outlines",
             "thick continuous black lines 4-6 pixels wide, every line the same "
             "uniform bold weight including interior detail lines",
             modifier,
             "on a plain white background",
         ]
     )
-    negative_prompt = f"{config.style.negative_prompts.strip()}, {_LINE_QUALITY_NEGATIVES}"
+    negative_prompt = f"{coloring.style.negative_prompts.strip()}, {_LINE_QUALITY_NEGATIVES}"
     return prompt, negative_prompt

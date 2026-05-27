@@ -90,10 +90,11 @@ class GenerationReport:
 
 def expand_slots(config: NicheConfig) -> list[Slot]:
     """Expand a niche config into its ordered list of page slots."""
+    coloring = config.require_coloring()
     slots: list[Slot] = []
     sequence_num = 0
-    for subject in config.subjects:
-        for variation_idx in range(config.variations_per_subject):
+    for subject in coloring.subjects:
+        for variation_idx in range(coloring.variations_per_subject):
             slots.append(Slot(sequence_num, subject, variation_idx))
             sequence_num += 1
     return slots
@@ -132,11 +133,12 @@ def plan_generation(
     (as the next retry) while retries remain, and otherwise reported as
     `exhausted`. `limit`, when given, caps `to_generate` — used by test mode.
     """
+    coloring = config.require_coloring()
     by_seq: defaultdict[int, list[Image]] = defaultdict(list)
     for image in existing:
         by_seq[image.sequence_num].append(image)
 
-    max_retries = config.qa.max_retries_per_slot
+    max_retries = coloring.qa.max_retries_per_slot
     to_generate: list[PlannedImage] = []
     skipped = 0
     exhausted: list[Slot] = []
@@ -157,7 +159,7 @@ def plan_generation(
             # Composition-rejected slots get the niche's tunable retry hint
             # appended to the prompt; other rejections retry the bare prompt.
             suffix = (
-                config.qa.composition_retry_prompt_suffix
+                coloring.qa.composition_retry_prompt_suffix
                 if latest.qa_status == ImageQAStatus.REJECTED_COMPOSITION
                 else None
             )
@@ -173,7 +175,7 @@ def plan_generation(
         else:
             exhausted.append(slot)
 
-    total_slots = len(config.subjects) * config.variations_per_subject
+    total_slots = len(coloring.subjects) * coloring.variations_per_subject
     if limit is not None:
         to_generate = to_generate[:limit]
     return GenerationPlan(
@@ -221,7 +223,8 @@ async def _generate_one(
     raw_dir: Path,
 ) -> Decimal:
     """Render one planned slot, save the PNG, and insert its `images` row."""
-    generation = config.generation
+    coloring = config.require_coloring()
+    generation = coloring.generation
     width, height = generation.image_dimensions
     seed = _seed_for(book, generation.fixed_seed, planned.slot.sequence_num, planned.retry_attempt)
     # FLUX schnell takes no guidance; a niche signals that with guidance 0.
@@ -248,8 +251,8 @@ async def _generate_one(
     line_art = await asyncio.to_thread(
         normalize_line_art,
         result.image_bytes,
-        target_size=config.qa.required_dimensions,
-        mode=config.post_process.mode,
+        target_size=coloring.qa.required_dimensions,
+        mode=coloring.post_process.mode,
     )
     processed = line_art.image_bytes
 
@@ -257,7 +260,7 @@ async def _generate_one(
     path = raw_dir / filename
     await asyncio.to_thread(path.write_bytes, processed)
 
-    final_width, final_height = config.qa.required_dimensions
+    final_width, final_height = coloring.qa.required_dimensions
     generation_params = {
         "model": generation.model,
         "width": final_width,

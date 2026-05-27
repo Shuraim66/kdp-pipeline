@@ -227,7 +227,7 @@ class _FakeAnthropic:
 
 def _seed_images(config, book: Book, output_dir: Path, failing, make_image) -> list[Image]:
     """Write each slot's initial PNG to disk and build its pending Image row."""
-    width, height = config.generation.image_dimensions
+    width, height = config.require_coloring().generation.image_dimensions
     raw_dir = output_dir / book.slug / "images" / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
     images: list[Image] = []
@@ -260,9 +260,9 @@ def test_qa_pending_demotes_pixel_passed_image_failing_composition(
     from src.qa.runner import _qa_pending
 
     base = make_niche_config()
-    config = base.model_copy(
-        update={"qa": base.qa.model_copy(update={"min_subject_area_ratio": 0.5})}
-    )
+    base_coloring = base.require_coloring()
+    new_qa = base_coloring.qa.model_copy(update={"min_subject_area_ratio": 0.5})
+    config = base.model_copy(update={"body": base_coloring.model_copy(update={"qa": new_qa})})
     book = make_book(slug=_SLUG, status=BS.GENERATION_DONE)
     img_path = tmp_path / "tiny.png"
     img_path.write_bytes(_clean_png(64, 64))
@@ -276,7 +276,7 @@ def test_qa_pending_demotes_pixel_passed_image_failing_composition(
     store = _Store([image])
     _install_store(monkeypatch, store)
 
-    _qa_pending(book.id, config.qa)
+    _qa_pending(book.id, config.require_coloring().qa)
 
     updated = store.list_images(book.id)[0]
     assert updated.qa_status == ImageQAStatus.REJECTED_COMPOSITION
@@ -315,7 +315,7 @@ def test_run_qa_regenerates_rejected_then_passes(
     make_niche_config, make_book, make_image, tmp_path, monkeypatch
 ) -> None:
     config = make_niche_config()
-    width, height = config.generation.image_dimensions
+    width, height = config.require_coloring().generation.image_dimensions
     book = make_book(slug=_SLUG, status=BS.GENERATION_DONE)
     store = _Store(_seed_images(config, book, tmp_path, frozenset({0}), make_image))
     _install_store(monkeypatch, store)
@@ -338,7 +338,7 @@ def test_run_qa_fails_book_when_slot_exhausts_retries(
     make_niche_config, make_book, make_image, tmp_path, monkeypatch
 ) -> None:
     config = make_niche_config(max_retries=2)
-    width, height = config.generation.image_dimensions
+    width, height = config.require_coloring().generation.image_dimensions
     book = make_book(slug=_SLUG, status=BS.GENERATION_DONE)
     store = _Store(_seed_images(config, book, tmp_path, frozenset({0}), make_image))
     _install_store(monkeypatch, store)
@@ -399,7 +399,7 @@ def test_run_qa_builds_a_fresh_vision_provider_each_round(
     # it touches. A vision provider built once and reused across rounds
     # deadlocks the second round — so run_qa must build a fresh one per round.
     config = make_niche_config(max_retries=2)
-    width, height = config.generation.image_dimensions
+    width, height = config.require_coloring().generation.image_dimensions
     book = make_book(slug=_SLUG, status=BS.GENERATION_DONE)
     # Slot 0 starts blank (fails pixel QA) so the run takes more than one round.
     store = _Store(_seed_images(config, book, tmp_path, frozenset({0}), make_image))
@@ -433,7 +433,7 @@ def test_run_qa_vision_rejection_triggers_regeneration(
     make_niche_config, make_book, make_image, tmp_path, monkeypatch
 ) -> None:
     config = make_niche_config()
-    width, height = config.generation.image_dimensions
+    width, height = config.require_coloring().generation.image_dimensions
     book = make_book(slug=_SLUG, status=BS.GENERATION_DONE)
     store = _Store(_seed_images(config, book, tmp_path, frozenset(), make_image))
     _install_store(monkeypatch, store)

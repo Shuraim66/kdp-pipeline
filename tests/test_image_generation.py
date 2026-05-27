@@ -173,16 +173,18 @@ def test_plan_requeues_rejected_with_retries(niche_config, make_image) -> None:
     assert plan.exhausted == []
 
 
+def _with_qa_suffix(config, suffix: str):
+    """Return a coloring NicheConfig with composition_retry_prompt_suffix set."""
+    coloring = config.require_coloring()
+    new_qa = coloring.qa.model_copy(update={"composition_retry_prompt_suffix": suffix})
+    new_body = coloring.model_copy(update={"qa": new_qa})
+    return config.model_copy(update={"body": new_body})
+
+
 def test_plan_appends_composition_suffix_to_retry_after_composition_reject(
     niche_config, make_image
 ) -> None:
-    config = niche_config.model_copy(
-        update={
-            "qa": niche_config.qa.model_copy(
-                update={"composition_retry_prompt_suffix": "FILL_THE_CANVAS_HINT"}
-            )
-        }
-    )
+    config = _with_qa_suffix(niche_config, "FILL_THE_CANVAS_HINT")
     rejected = make_image(
         sequence_num=0,
         qa_status=ImageQAStatus.REJECTED_COMPOSITION,
@@ -196,13 +198,7 @@ def test_plan_appends_composition_suffix_to_retry_after_composition_reject(
 def test_plan_does_not_append_composition_suffix_after_other_rejections(
     niche_config, make_image
 ) -> None:
-    config = niche_config.model_copy(
-        update={
-            "qa": niche_config.qa.model_copy(
-                update={"composition_retry_prompt_suffix": "FILL_THE_CANVAS_HINT"}
-            )
-        }
-    )
+    config = _with_qa_suffix(niche_config, "FILL_THE_CANVAS_HINT")
     rejected = make_image(
         sequence_num=0,
         qa_status=ImageQAStatus.REJECTED_WHITE_PCT,  # not a composition rejection
@@ -214,7 +210,7 @@ def test_plan_does_not_append_composition_suffix_after_other_rejections(
 
 
 def test_plan_marks_exhausted_slots(niche_config, make_image) -> None:
-    max_retries = niche_config.qa.max_retries_per_slot
+    max_retries = niche_config.require_coloring().qa.max_retries_per_slot
     rejected = make_image(
         sequence_num=0,
         qa_status=ImageQAStatus.REJECTED_GRAY_PCT,

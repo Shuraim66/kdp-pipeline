@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -13,6 +14,7 @@ from src.config.description_templates import (
     pick_template,
     skeleton_ngram_overlap,
 )
+from src.config.loader import load_niche_config
 from src.generators.metadata import (
     BookMetadata,
     MetadataValidationError,
@@ -23,6 +25,10 @@ from src.generators.metadata import (
     validate_metadata,
 )
 from src.providers.anthropic import AnthropicResult
+
+_NICHES_DIR = Path(__file__).resolve().parent.parent / "niches"
+# A fixed UUID — deterministic template rotation, deterministic prompt output.
+_SNAPSHOT_BOOK_ID = UUID("12345678-1234-5678-1234-567812345678")
 
 
 def _book_metadata(config: Any) -> BookMetadata:
@@ -180,6 +186,29 @@ async def test_generate_metadata_fails_after_max_attempts(make_niche_config) -> 
     with pytest.raises(MetadataValidationError):
         await generate_metadata(provider, config, book_id=uuid4())  # type: ignore[arg-type]
     assert provider.calls == 3
+
+
+# --- refactor regression -----------------------------------------------------
+
+
+def test_cozy_dogs_prompt_unchanged_after_refactor() -> None:
+    """Snapshot test: the coloring prompt for cozy_dogs must not drift.
+
+    Guardrail #1 from the puzzle-pipeline plan: after the step-2 discriminated-
+    union refactor and the step-7 metadata parameterisation, the prompt built
+    for a coloring book with default args must be byte-identical to the
+    pre-refactor output. The SHA256 below was captured immediately before
+    step 2 was committed.
+    """
+    import hashlib
+
+    config = load_niche_config(_NICHES_DIR / "cozy_dogs_v1.yaml")
+    _system, user = build_metadata_prompt(config, book_id=_SNAPSHOT_BOOK_ID)
+    digest = hashlib.sha256(user.encode()).hexdigest()
+    assert digest == "805cd480f0b3d24e3402e69f837a8e5b58f99b89ddcbe8d72368970e9f4d7445", (
+        "cozy_dogs metadata prompt drifted from the pre-refactor snapshot — "
+        "either restore the wording or update the snapshot intentionally"
+    )
 
 
 # --- checklist ---------------------------------------------------------------

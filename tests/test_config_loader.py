@@ -68,13 +68,14 @@ def test_valid_config_passes() -> None:
     config = NicheConfig.model_validate(_valid_config())
     assert config.slug == "test_niche_v1"
     assert config.book.page_count == 24
-    assert config.generation.image_dimensions == (2550, 2550)
+    assert config.require_coloring().generation.image_dimensions == (2550, 2550)
 
 
 def test_real_nurses_yaml_loads() -> None:
     config = load_niche_config(_NICHES_DIR / "nurses_v1.yaml")
+    coloring = config.require_coloring()
     assert config.slug == "nurses_bold_easy_v1"
-    produced = len(config.subjects) * config.variations_per_subject
+    produced = len(coloring.subjects) * coloring.variations_per_subject
     assert produced == config.book.page_count == 50
 
 

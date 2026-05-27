@@ -7,6 +7,10 @@ interior layout; Phase 8 extends this module with cover geometry.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.config.schema import NicheConfig
 
 POINTS_PER_INCH = 72.0
 
@@ -110,3 +114,37 @@ def compute_cover_dimensions(
         total_width_px=round(total_w * dpi),
         total_height_px=round(total_h * dpi),
     )
+
+
+def total_interior_pages(config: NicheConfig) -> int:
+    """Actual rendered interior page count — feeds the cover spine formula.
+
+    ``book.page_count`` counts only the content pages (designs for coloring;
+    mazes + solutions for puzzle). Front-matter pages — title, copyright,
+    intro, and the solutions divider — are added here. The spine factor in
+    `compute_cover_dimensions` multiplies the total to size the cover; any
+    drift between ``book.page_count`` and the assembled PDF would print a
+    misaligned spine.
+
+    Coloring: ``book.page_count + 2`` (title + copyright). Identical to the
+    long-standing hard-coded formula at the prior +2 call sites — coloring
+    books produce the same number they did before.
+
+    Puzzle: ``book.page_count + (1 if title_page) + 1 (copyright)
+    + (1 if intro_page) + (1 if include_solutions and solutions_section=='end')``.
+    """
+    coloring = config.coloring
+    if coloring is not None:
+        return config.book.page_count + 2  # title + copyright
+    puzzle_body = config.require_puzzle()
+    extras = 1  # copyright always
+    if puzzle_body.front_matter.title_page:
+        extras += 1
+    if puzzle_body.front_matter.intro_page:
+        extras += 1
+    if (
+        puzzle_body.puzzle.include_solutions
+        and puzzle_body.puzzle.solutions_section == "end"
+    ):
+        extras += 1  # "Solutions" divider page before the solution pages
+    return config.book.page_count + extras

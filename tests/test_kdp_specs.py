@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
-from src.utils.kdp_specs import interior_layout, parse_trim_size
+from src.config.loader import load_niche_config
+from src.utils.kdp_specs import interior_layout, parse_trim_size, total_interior_pages
+
+_NICHES_DIR = Path(__file__).resolve().parent.parent / "niches"
 
 
 def test_parse_trim_size() -> None:
@@ -28,3 +33,19 @@ def test_interior_layout_tall_book() -> None:
     assert layout.page_height == pytest.approx(11.25 * 72)
     assert layout.safe_width == pytest.approx(8.0 * 72)
     assert layout.safe_height == pytest.approx(10.5 * 72)
+
+
+def test_total_interior_pages_coloring_unchanged_for_cottagecore_mushrooms() -> None:
+    """Pre-refactor: every coloring book was page_count + 2 (title + copyright)."""
+    config = load_niche_config(_NICHES_DIR / "cottagecore_mushrooms_v1.yaml")
+    assert total_interior_pages(config) == config.book.page_count + 2
+
+
+def test_total_interior_pages_coloring_unchanged_for_cozy_dogs() -> None:
+    config = load_niche_config(_NICHES_DIR / "cozy_dogs_v1.yaml")
+    assert total_interior_pages(config) == config.book.page_count + 2
+
+
+def test_total_interior_pages_coloring_unchanged_for_nurses() -> None:
+    config = load_niche_config(_NICHES_DIR / "nurses_v1.yaml")
+    assert total_interior_pages(config) == config.book.page_count + 2

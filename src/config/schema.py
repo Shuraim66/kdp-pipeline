@@ -1,8 +1,18 @@
-"""Pydantic models for niche configuration — strict validation."""
+"""Pydantic models for niche configuration — strict validation.
+
+Niche configs are polymorphic on `body.kind`: a coloring book carries the
+image-generation, style, subject, post-process, and QA blocks; a puzzle-maze
+book carries a puzzle spec and a front-matter spec. The discriminator lives
+on the nested `body` field, but YAML / dict input is accepted in either the
+WRAPPED form (`body: {kind: ..., ...}`) or the LEGACY flat form (top-level
+coloring keys or top-level `book_type: puzzle_maze` + `puzzle:` + `front_matter:`).
+A ``mode="before"`` model validator rewrites legacy input into the wrapped form,
+so existing YAML files and stored DB configs continue to validate unchanged.
+"""
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -158,8 +168,111 @@ class Subject(_Strict):
     kind: Literal["object", "character", "scene"]
 
 
+class ColoringBody(_Strict):
+    """The coloring-book-specific portion of a niche config."""
+
+    kind: Literal["coloring"] = "coloring"
+    style: StyleSpec
+    subjects: list[Subject] = Field(min_length=1)
+    variations_per_subject: int = Field(ge=1)
+    composition_modifiers: list[str] = Field(min_length=1)
+    generation: GenerationSpec
+    post_process: PostProcessSpec = Field(default_factory=PostProcessSpec)
+    qa: QASpec
+
+
+class PuzzleSpec(_Strict):
+    """The `puzzle:` section — maze generation parameters."""
+
+    type: Literal["maze"] = "maze"
+    algorithm: Literal["prim", "kruskal", "backtracker", "hunt_and_kill"] = "backtracker"
+    count: int = Field(ge=1, le=200)
+    # The curve CYCLES across mazes: difficulty for maze i is
+    # `difficulty_curve[i % len(difficulty_curve)]`. No length-equals-count
+    # constraint — a 5-element curve over 40 mazes is fine.
+    difficulty_curve: list[Literal["easy", "medium", "hard"]] = Field(min_length=1)
+    grid_sizes: dict[Literal["easy", "medium", "hard"], tuple[int, int]]
+    include_solutions: bool = True
+    solutions_section: Literal["end", "interleaved"] = "end"
+    themed_borders: bool = False
+    fixed_seed: int | None = None
+
+    @model_validator(mode="after")
+    def _grid_sizes_cover_curve(self) -> PuzzleSpec:
+        """Every difficulty used by the curve must have a grid size entry."""
+        for difficulty in set(self.difficulty_curve):
+            if difficulty not in self.grid_sizes:
+                raise ValueError(
+                    f"puzzle.grid_sizes is missing an entry for difficulty {difficulty!r} "
+                    f"used by puzzle.difficulty_curve"
+                )
+        return self
+
+
+class PuzzleFrontMatterSpec(_Strict):
+    """The puzzle-book `front_matter:` section — page toggles + custom text."""
+
+    title_page: bool = True
+    intro_page: bool = True
+    intro_text: str = ""
+    # Optional custom tips block for the copyright page (the maze-book default
+    # is supplied by the puzzle book builder when this is empty).
+    copyright_tips: tuple[str, ...] = ()
+
+
+class PuzzleBody(_Strict):
+    """The puzzle-book-specific portion of a niche config."""
+
+    kind: Literal["puzzle_maze"]
+    puzzle: PuzzleSpec
+    front_matter: PuzzleFrontMatterSpec = Field(default_factory=PuzzleFrontMatterSpec)
+
+
+# Keys that live under `body` in the wrapped form but appear at the YAML top
+# level in the legacy/flat form. Used by the back-compat shim below.
+_COLORING_BODY_KEYS: tuple[str, ...] = (
+    "style",
+    "subjects",
+    "variations_per_subject",
+    "composition_modifiers",
+    "generation",
+    "post_process",
+    "qa",
+)
+_PUZZLE_BODY_KEYS: tuple[str, ...] = ("puzzle", "front_matter")
+
+
+def _wrap_body_input(data: dict[str, Any]) -> dict[str, Any]:
+    """Rewrite flat input into the wrapped `body: {kind, ...}` form.
+
+    Existing coloring YAMLs have no `book_type` and no `body:` key — the
+    coloring keys sit at the top level. New puzzle YAMLs carry top-level
+    `book_type: puzzle_maze` plus `puzzle:` and `front_matter:` keys. Both
+    shapes are normalised here so the discriminated union always sees the
+    same wrapped form. Already-wrapped input passes through unchanged.
+    """
+    if "body" in data:
+        return data
+    data = dict(data)
+    kind = data.pop("book_type", "coloring")
+    if kind == "coloring":
+        body_keys: tuple[str, ...] = _COLORING_BODY_KEYS
+    elif kind == "puzzle_maze":
+        body_keys = _PUZZLE_BODY_KEYS
+    else:
+        # Unknown kind — leave it for the discriminator to reject.
+        data["body"] = {"kind": kind}
+        return data
+    body: dict[str, Any] = {"kind": kind}
+    for key in body_keys:
+        if key in data:
+            body[key] = data.pop(key)
+    data["body"] = body
+    return data
+
+
 class NicheConfig(_Strict):
-    """A fully validated niche configuration."""
+    """A fully validated niche configuration — discriminated on `body.kind`."""
 
     slug: Slug
     niche: str
@@ -168,24 +281,92 @@ class NicheConfig(_Strict):
     # visual identity (palette + font families) at use time.
     imprint: Slug = "quiet_hours_press"
     book: BookSpec
-    style: StyleSpec
-    subjects: list[Subject] = Field(min_length=1)
-    variations_per_subject: int = Field(ge=1)
-    composition_modifiers: list[str] = Field(min_length=1)
     metadata: MetadataSpec
     cover: CoverSpec
-    generation: GenerationSpec
-    post_process: PostProcessSpec = Field(default_factory=PostProcessSpec)
-    qa: QASpec
+    body: Annotated[ColoringBody | PuzzleBody, Field(discriminator="kind")]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _wrap_legacy_input(cls, data: Any) -> Any:
+        """Accept legacy flat input by wrapping it into the discriminated form."""
+        if isinstance(data, dict):
+            return _wrap_body_input(data)
+        return data
+
+    @property
+    def coloring(self) -> ColoringBody | None:
+        """The coloring body, or None if this is a different book type."""
+        return self.body if isinstance(self.body, ColoringBody) else None
+
+    @property
+    def puzzle(self) -> PuzzleBody | None:
+        """The puzzle body, or None if this is a different book type."""
+        return self.body if isinstance(self.body, PuzzleBody) else None
+
+    def require_coloring(self) -> ColoringBody:
+        """Narrow `body` to ColoringBody; raise ValueError if not.
+
+        Never use ``assert`` for this — ``assert`` is stripped under
+        ``python -O`` and a mismatched config would silently access None.
+        """
+        if not isinstance(self.body, ColoringBody):
+            raise ValueError(
+                f"This code path requires book_type='coloring'; "
+                f"got {self.body.kind!r} for slug {self.slug!r}."
+            )
+        return self.body
+
+    def require_puzzle(self) -> PuzzleBody:
+        """Narrow `body` to PuzzleBody; raise ValueError if not."""
+        if not isinstance(self.body, PuzzleBody):
+            raise ValueError(
+                f"This code path requires book_type='puzzle_maze'; "
+                f"got {self.body.kind!r} for slug {self.slug!r}."
+            )
+        return self.body
 
     @model_validator(mode="after")
-    def _check_subject_count(self) -> NicheConfig:
-        """subjects x variations_per_subject must equal book.page_count."""
-        produced = len(self.subjects) * self.variations_per_subject
-        if produced != self.book.page_count:
+    def _check_page_count(self) -> NicheConfig:
+        """The interior content-page count must match `book.page_count`.
+
+        Front-matter pages (title, copyright, intro, solutions divider) are
+        added separately by `total_interior_pages()` in `src/utils/kdp_specs.py`
+        — same convention as the existing coloring +2 (title + copyright).
+        """
+        if isinstance(self.body, ColoringBody):
+            produced = len(self.body.subjects) * self.body.variations_per_subject
+            if produced != self.book.page_count:
+                raise ValueError(
+                    f"{len(self.body.subjects)} subjects x {self.body.variations_per_subject} "
+                    f"variations = {produced} pages, but book.page_count is "
+                    f"{self.book.page_count}"
+                )
+        elif isinstance(self.body, PuzzleBody):
+            spec = self.body.puzzle
+            solutions_pages = (
+                spec.count
+                if spec.include_solutions and spec.solutions_section == "end"
+                else 0
+            )
+            expected = spec.count + solutions_pages
+            if expected != self.book.page_count:
+                raise ValueError(
+                    f"puzzle.count={spec.count} + {solutions_pages} solution pages = "
+                    f"{expected}, but book.page_count is {self.book.page_count}. "
+                    "book.page_count must equal puzzle.count + the solutions section "
+                    "(when include_solutions=true and solutions_section='end')."
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _puzzle_requires_cover_bullets(self) -> NicheConfig:
+        """Puzzle books must set cover.bullets — the coloring fallback would lie."""
+        if isinstance(self.body, PuzzleBody) and len(self.cover.bullets) < 3:
             raise ValueError(
-                f"{len(self.subjects)} subjects x {self.variations_per_subject} "
-                f"variations = {produced} pages, but book.page_count is "
-                f"{self.book.page_count}"
+                "puzzle books must specify cover.bullets explicitly (>=3 items). "
+                "The coloring-specific fallback in src/generators/cover.py:"
+                "_feature_bullets() does not apply to puzzle books — it references "
+                "'coloring outlines' and would print nonsense on a maze book's "
+                "back cover."
             )
         return self
