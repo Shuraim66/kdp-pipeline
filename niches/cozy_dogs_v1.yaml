@@ -1,0 +1,214 @@
+# niches/cozy_dogs_v1.yaml
+#
+# Reframed from bernese_mountain_dog_v1: dropped breed-specific anchoring
+# after the renderartist coloring-book LoRA proved unable to reliably
+# produce Berner anatomy (3 iteration cycles, generic cute floppy-eared
+# cartoon dog won every time). The LoRA's default IS the product here —
+# we stop fighting it, lean into "Cozy Dogs."
+
+slug: cozy_dogs_v1
+
+niche: cozy_dogs
+
+imprint: pawpress
+
+book:
+  trim_size: "8.5x8.5"
+  page_count: 46
+  price_usd: 9.99
+  target_audience: "Berner owners, dog lovers, and adults looking for a cozy bold-and-easy coloring book; also suitable for dog-loving teens"
+
+style:
+  art_style: >
+    bold and easy coloring book, thick black outlines, no shading, no gray,
+    pure black line art on white background, large simple shapes,
+    kawaii-realistic hybrid, cozy and gift-friendly, cute fluffy dog with
+    friendly expression, floppy ears, expressive eyes, soft rounded forms
+  line_weight: "very thick"
+  negative_prompts: >
+    shading, gray tones, hatching, color, fill, photorealistic, 3d, depth,
+    fine lines, intricate details, text, letters, numbers, watermarks,
+    mandala patterns, zentangle, abstract geometric backgrounds
+
+subjects:
+  # Section 1: Cozy & domestic (12)
+  - name: "cute fluffy dog sleeping curled up in a cozy round dog bed beside a stone fireplace with flickering flames"
+    kind: scene
+  - name: "cute fluffy dog lying belly-up on a thick rug surrounded by chew toys"
+    kind: scene
+  - name: "cute fluffy dog resting head on a person's lap while they read a book on a couch"
+    kind: scene
+  - name: "cute fluffy dog sitting beside a Christmas tree with wrapped presents and a fluffy bow on collar"
+    kind: scene
+  - name: "cute fluffy dog peeking up from under a knitted blanket on a wooden bench"
+    kind: scene
+  - name: "cute fluffy dog sitting by a window watching snowflakes fall outside with a mug of cocoa on the sill"
+    kind: scene
+  - name: "cute fluffy dog lying next to a tipped-over basket of yarn balls"
+    kind: scene
+  - name: "cute fluffy dog curled up sleeping with a stuffed teddy bear tucked under one paw"
+    kind: scene
+  - name: "cute fluffy dog sitting patiently beside a food bowl with paw print pattern"
+    kind: scene
+  - name: "cute fluffy dog lying on a hardwood floor next to slippers and a folded newspaper"
+    kind: scene
+  - name: "cute fluffy dog resting in a sunbeam on a cottage kitchen floor with herbs hanging above"
+    kind: scene
+  - name: "cute fluffy dog sitting in a wicker basket with cheek squished against the side, looking up"
+    kind: character
+
+  # Section 2: Alpine & outdoor (12)
+  - name: "cute fluffy dog standing proudly in a flower-filled alpine meadow with mountain peaks behind"
+    kind: scene
+  - name: "cute fluffy dog sitting beside a wooden Swiss chalet with carved details and window boxes"
+    kind: scene
+  - name: "cute fluffy dog bounding through deep fresh snow with tongue out and ears flopping"
+    kind: character
+  - name: "cute fluffy dog walking along a mountain trail with a small wooden bridge over a stream"
+    kind: scene
+  - name: "cute fluffy dog standing on a rocky outcrop overlooking a valley dotted with farmhouses"
+    kind: scene
+  - name: "cute fluffy dog lying in tall grass beside cheerful wildflowers with a butterfly above"
+    kind: scene
+  - name: "cute fluffy dog climbing a snowy hillside with paw prints trailing behind"
+    kind: character
+  - name: "cute fluffy dog sitting beside a hiker's backpack and boots on a forest trail"
+    kind: scene
+  - name: "cute fluffy dog resting under a pine tree with cones scattered around"
+    kind: scene
+  - name: "cute fluffy dog standing beside a wooden farm fence with mountains in the distance"
+    kind: scene
+  - name: "cute fluffy dog splashing in a shallow stream with water droplets and ripples"
+    kind: character
+  - name: "cute fluffy dog sitting in autumn leaves beneath a tree with leaves falling around"
+    kind: scene
+
+  # Section 3: Working heritage & farm (9)
+  - name: "cute fluffy dog pulling a small wooden Swiss milk cart with metal milk cans"
+    kind: scene
+  - name: "cute fluffy dog walking alongside a flock of fluffy sheep on a hillside"
+    kind: scene
+  - name: "cute fluffy dog standing in a barn doorway with hay bales stacked behind"
+    kind: scene
+  - name: "cute fluffy dog sitting beside a chicken coop with hens pecking and a rooster perched"
+    kind: scene
+  - name: "cute fluffy dog watching ducks waddle past beside a small pond with cattails"
+    kind: scene
+  - name: "cute fluffy dog resting beside a wooden wheelbarrow filled with garden vegetables"
+    kind: scene
+  - name: "cute fluffy dog sitting beside a wagon of pumpkins in front of a wooden cottage in autumn"
+    kind: scene
+  - name: "cute fluffy dog standing in front of a stone well with a wooden bucket and pulley"
+    kind: scene
+  - name: "cute fluffy dog lying in a bed of straw beside a goat with a curious expression"
+    kind: scene
+
+  # Section 4: Puppies & life stages (7)
+  - name: "tiny fluffy puppy with oversized paws sitting in a small woven basket"
+    kind: character
+  - name: "two fluffy puppies tumbling and playing on grass with butterflies above"
+    kind: scene
+  - name: "fluffy puppy curled up sleeping next to its mother dog protectively"
+    kind: scene
+  - name: "fluffy puppy sitting on a wooden porch with one ear flopped over"
+    kind: character
+  - name: "fluffy puppy chewing on a giant pinecone with a happy expression"
+    kind: character
+  - name: "young cute fluffy dog standing tall with a proud expression"
+    kind: character
+  - name: "adult cute fluffy dog with round reading glasses propped on its snout, wise gentle-giant pose"
+    kind: character
+
+  # Section 5: With humans & gifts (5)
+  - name: "cute fluffy dog walking beside a person in a cozy sweater on a cobblestone village street"
+    kind: scene
+  - name: "cute fluffy dog being hugged from behind by a child, both with happy expressions"
+    kind: scene
+  - name: "cute fluffy dog sitting beside a wedding bouquet on a wooden bench"
+    kind: scene
+  - name: "cute fluffy dog with a flower crown of daisies, sitting in a meadow"
+    kind: character
+  - name: "cute fluffy dog sitting on a picnic blanket with a basket and apples"
+    kind: scene
+  - name: "cute fluffy dog with a paper birthday hat beside a frosted dog-biscuit cake with one candle"
+    kind: scene
+
+variations_per_subject: 1
+
+composition_modifiers:
+  - "centered composition, subject fills the canvas"
+  - "subject prominently off-center with supporting scene elements"
+  - "low-angle view emphasizing the dog's sturdy build"
+  - "cozy framed composition with foreground elements softly bracketing the subject"
+
+metadata:
+  title_seed: "Cozy Dogs Coloring Book"
+  subtitle_seed: "46 Bold & Easy Designs of Adorable Dogs in Heartwarming Everyday Moments for Adults, Teens, and Dog Lovers"
+  author: "PawPress Studio"
+  keywords_seed:
+    - "dog coloring book for adults"
+    - "bold and easy coloring book for adults"
+    - "cute puppy coloring book"
+    - "cozy dog coloring book for women"
+    - "coloring book for dog lovers"
+    - "dog coloring book for adults relaxation"
+    - "puppy coloring book for adults"
+  categories:
+    - "Books > Crafts, Hobbies & Home > Crafts & Hobbies > Drawing"
+    - "Books > Arts & Photography > Drawing"
+  low_content: false
+
+cover:
+  background_color: "#fff8e7"
+  accent_color: "#7a4a2c"
+  text_color: "#2b1810"
+  hero_subject: "A friendly cute fluffy dog with floppy ears sitting in front of a cozy cottage with flowers in window boxes and a wooden door. Sweet expressive eyes, soft rounded forms, kawaii-realistic hybrid style, gentle-giant pose."
+  hero_style: "colorful, simple flat illustration, vector style, no text, warm earthy palette of cream, terracotta, sage green, and rust"
+  font_family: "Fraunces"
+  back_headline: "Slow Down. Color the Cozy."
+  bullets:
+    - "46 original cozy dog designs"
+    - "Bold, easy-to-color outlines for stress-free coloring"
+    - "Single-sided pages prevent bleed-through"
+    - "Large 8.5 × 8.5 inch format"
+
+generation:
+  # FLUX dev + the renderartist coloring-book LoRA via the fal-ai/flux-lora
+  # endpoint — same stack proven on cottagecore book 1 (only thing that
+  # reliably suppresses the LoRA-less FLUX shading prior on rich scenes).
+  # 1000² is the LoRA's tuned resolution; normalize_line_art upscales to 2550
+  # in post-process.
+  model: "fal-ai/flux-lora"
+  image_dimensions: [1000, 1000]
+  num_inference_steps: 28
+  guidance_scale: 3.5
+  fixed_seed: null  # uses per-book seed namespace via book.seed_prefix
+  loras:
+    - path: "https://huggingface.co/renderartist/coloringbookflux/resolve/main/c0l0ringb00k_Flux_v1_renderartist.safetensors"
+      scale: 1.0
+      name: "coloringbookflux_renderartist"
+      trigger: "c0l0ringb00k coloring book page"
+
+post_process:
+  mode: minimal
+
+qa:
+  # Relaxed after the first QA run rejected 37/50 slots at the initial strict
+  # values — wasting $3+ on retries that produced worse pages. The coloringbook
+  # LoRA's natural output distribution sits in 0.40-0.55 sar with 5-12% gray
+  # antialiasing and 85-90% white on detailed scenes; cottagecore book 1
+  # proved these relaxed values ship clean books. Threshold-tightening for
+  # this niche was speculative and counterproductive — see CALIBRATION_NOTES.
+  min_white_pct: 85.0
+  max_gray_pct: 12.0
+  # The coloringbook LoRA fills the canvas with detail (dog tails, scene
+  # edges, fence rails). KDP allows ±0.0625" trim variance; 38px = 0.125"
+  # at 300dpi gives 2× that buffer — at the floor of safe-but-acceptable.
+  required_white_margin_px: 38
+  required_dimensions: [2550, 2550]
+  max_retries_per_slot: 3
+  ink_density_band: [3.0, 8.0]
+  min_subject_area_ratio: 0.40
+  # Disabled: the prior suffix made retries SMALLER not bigger — the LoRA read
+  # "fills 70% of canvas" as "add more background". Empty = plain regeneration.
+  composition_retry_prompt_suffix: ""

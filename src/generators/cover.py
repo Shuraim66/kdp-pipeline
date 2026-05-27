@@ -305,10 +305,10 @@ def _paste_hero_fill(
 def _feature_bullets(config: NicheConfig) -> list[str]:
     """Fallback back-cover bullets when the niche sets none of its own."""
     return [
-        f"{config.book.page_count} unique hand-crafted designs",
+        f"{config.book.page_count} original designs",
+        "Bold, easy-to-color outlines for stress-free coloring",
         "Single-sided pages prevent bleed-through",
-        f"{config.style.line_weight.capitalize()} lines, easy to color",
-        f"Large {config.book.trim_size.replace('x', ' x ')} inch pages",
+        f"Large {config.book.trim_size.replace('x', ' x ')} inch format",
     ]
 
 
@@ -482,18 +482,21 @@ def _draw_back(
     width = x1 - x0
     center_x = (x0 + x1) // 2
 
-    # One line on the back keeps the lower band free for the page previews.
+    # Headline: niche override (mixed case, sells the experience) or the title
+    # in all caps as a fallback. One line keeps the lower band free for previews.
+    headline = config.cover.back_headline or title.upper()
+    max_lines = 2 if config.cover.back_headline else 1
     title_font = _fit_font(
         draw,
         fonts.title,
-        title.upper(),
+        headline,
         max_width=width,
-        max_lines=1,
+        max_lines=max_lines,
         max_size=round(width * 0.13),
     )
     y = _draw_wrapped(
         draw,
-        title.upper(),
+        headline,
         title_font,
         center_x=center_x,
         top_y=y0,

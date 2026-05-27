@@ -62,6 +62,7 @@ class CoverSpec(_Strict):
     subtitle: str = ""
     badge_text: str = ""
     # Back-cover copy plus the interior pages (sequence numbers) to preview.
+    back_headline: str = ""
     tagline: str = ""
     bullets: list[str] = []
     thumbnails: list[int] = []
