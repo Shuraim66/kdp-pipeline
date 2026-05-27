@@ -57,6 +57,7 @@ from src.generators.interior import build_interior_pdf
 from src.generators.metadata import MetadataValidationError, run_metadata
 from src.providers.anthropic import AnthropicProvider, get_anthropic_provider
 from src.providers.fal import FalProvider, cost_for_image, get_fal_provider
+from src.puzzle.cli import puzzle_group
 from src.qa.insights import (
     build_ink_density_report,
     build_probe_report,
@@ -96,6 +97,10 @@ def alembic_config() -> Config:
 def cli() -> None:
     """KDP coloring book pipeline."""
     configure_logging()
+
+
+# Register the puzzle subgroup — puzzle commands live under `puzzle ...`.
+cli.add_command(puzzle_group)
 
 
 @cli.command("init-db")

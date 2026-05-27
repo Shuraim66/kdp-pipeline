@@ -43,6 +43,19 @@ _EXPECTED_COMMANDS = {
     "mark-published",
     "retry-failed",
     "cleanup-orphans",
+    # Puzzle pipeline (registered as a subgroup; lives under `puzzle ...`).
+    "puzzle",
+}
+
+# The 7 subcommands the puzzle subgroup must expose.
+_EXPECTED_PUZZLE_SUBCOMMANDS = {
+    "validate-niche",
+    "generate-puzzles",
+    "render-puzzles",
+    "build-interior",
+    "build-cover",
+    "generate-metadata",
+    "build",
 }
 
 
@@ -128,6 +141,32 @@ def test_build_help_lists_its_flags() -> None:
 def test_build_rejects_missing_yaml() -> None:
     result = CliRunner().invoke(cli, ["build", "does_not_exist.yaml"])
     assert result.exit_code != 0
+
+
+# --------------------------------------------------------------------------
+# puzzle subgroup
+# --------------------------------------------------------------------------
+
+
+def test_puzzle_subgroup_help_lists_every_subcommand() -> None:
+    result = CliRunner().invoke(cli, ["puzzle", "--help"])
+    assert result.exit_code == 0
+    for name in _EXPECTED_PUZZLE_SUBCOMMANDS:
+        assert name in result.output
+
+
+def test_puzzle_build_help_lists_its_flags() -> None:
+    result = CliRunner().invoke(cli, ["puzzle", "build", "--help"])
+    assert result.exit_code == 0
+    for flag in ("--yes", "--resume"):
+        assert flag in result.output
+
+
+def test_puzzle_validate_niche_rejects_coloring_yaml() -> None:
+    """A coloring YAML must NOT validate via the puzzle command."""
+    result = CliRunner().invoke(cli, ["puzzle", "validate-niche", _NURSES_YAML])
+    assert result.exit_code != 0
+    assert "puzzle" in _text(result).lower() or "coloring" in _text(result).lower()
 
 
 # --------------------------------------------------------------------------
