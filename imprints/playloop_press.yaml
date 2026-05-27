@@ -1,0 +1,14 @@
+# PlayLoop Press — kid-aimed activity books (mazes, future: word search,
+# sudoku). Distinct publisher voice from PawPress (animal/pet coloring) and
+# Quiet Hours (cottagecore). Reuses PawPress's warm_friendly palette and the
+# Fraunces / Inter font pair for v1; a dedicated kid-bright palette is
+# deferred until the second puzzle book.
+
+name: PlayLoop Press
+publisher_field: PlayLoop Press
+author_default: PlayLoop Studio
+visual_style:
+  cover_font_primary: "Fraunces"
+  cover_font_secondary: "Inter"
+  cover_palette_name: warm_friendly
+  back_cover_template: friendly_v1

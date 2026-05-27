@@ -1,0 +1,73 @@
+# First puzzle book — a kids' maze activity book under the PlayLoop Press imprint.
+# 40 mazes (8 easy, 16 medium, 16 hard via a 5-element cycling curve; see
+# difficulty_curve below) plus 40 solutions at the back. 8.5x11 trim, the
+# standard kids' activity-book size.
+
+slug: maze_book_kids_v1
+niche: kids_mazes
+imprint: playloop_press
+book_type: puzzle_maze
+
+book:
+  trim_size: "8.5x11"
+  page_count: 80  # 40 mazes + 40 solutions (front matter pages are extra)
+  price_usd: 6.99
+  target_audience: "Kids ages 6-10"
+
+puzzle:
+  type: maze
+  algorithm: prim
+  count: 40
+  # Cycling curve — difficulty for maze i is curve[i % 5]. Over 40 mazes that
+  # produces 16 easy + 16 medium + 8 hard, gently ramping difficulty across
+  # every five-maze block while keeping a few familiar easy puzzles late
+  # in the book so a struggling kid never hits a wall of "too hard".
+  difficulty_curve: [easy, easy, medium, medium, hard]
+  grid_sizes:
+    easy: [10, 10]
+    medium: [15, 15]
+    hard: [20, 20]
+  include_solutions: true
+  solutions_section: end
+  themed_borders: false
+  fixed_seed: null  # null = per-book derivation from book.id (reprintable)
+
+front_matter:
+  title_page: true
+  intro_page: true
+  intro_text: |
+    Welcome to your maze adventure! Each puzzle gets a little trickier as
+    you go. Use a pencil so you can erase if you take a wrong turn.
+    All the solutions are at the back if you get stuck.
+
+metadata:
+  title_seed: "Maze Book for Kids"
+  subtitle_seed: "40 Fun Mazes from Easy to Hard for Ages 6-10"
+  author: "PlayLoop Studio"
+  keywords_seed:
+    - "maze book for kids"
+    - "maze puzzles for kids ages 6-8"
+    - "activity book for kids ages 8-12"
+    - "maze book for kids ages 4-8"
+    - "kids puzzle book"
+    - "fun maze book for kids"
+    - "maze activity book"
+  categories:
+    - "Books > Children's Books > Activities, Crafts & Games > Activity Books > Mazes"
+    - "Books > Children's Books > Activities, Crafts & Games > Activity Books > General"
+  low_content: false
+
+cover:
+  background_color: "#fff8e7"
+  accent_color: "#c45a3a"
+  text_color: "#2b1810"
+  hero_subject: "A cheerful kid with a pencil solving a colorful maze, bright and inviting, kids' activity book aesthetic"
+  hero_style: "colorful, simple flat illustration, vector style, no text, friendly and fun, kid-appealing"
+  font_family: "Fraunces"
+  # Puzzle books MUST set cover.bullets explicitly — the coloring fallback
+  # in src/generators/cover.py:_feature_bullets references "coloring outlines".
+  bullets:
+    - "40 fun mazes from easy to hard"
+    - "Perfect for ages 6 to 10"
+    - "Full solutions at the back"
+    - "Single-sided pages — no bleed-through"
