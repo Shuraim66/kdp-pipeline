@@ -20,6 +20,7 @@ dependencies = [
     "rich>=13.7.0",
     "python-dotenv>=1.0.0",
     "alembic>=1.13",
+    "mazelib==0.9.16",
 ]
 
 [dependency-groups]
@@ -60,6 +61,11 @@ pretty = true
 [[tool.mypy.overrides]]
 # reportlab ships no type information (no py.typed, no stubs).
 module = ["reportlab.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# mazelib ships no type information (no py.typed, no stubs).
+module = ["mazelib", "mazelib.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
