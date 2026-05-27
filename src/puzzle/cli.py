@@ -120,15 +120,29 @@ def puzzle_render_puzzles(slug: str) -> None:
         raise SystemExit(1)
 
     output_dir = get_settings().output_dir
-    mazes = generate_book_mazes(config.require_puzzle().puzzle, book_seed_prefix=book.seed_prefix)
+    puzzle_body = config.require_puzzle()
+    mazes = generate_book_mazes(puzzle_body.puzzle, book_seed_prefix=book.seed_prefix)
+    render_spec = puzzle_body.puzzle.render
+    wall_px = render_spec.wall_thickness_px
+    ratios: dict[str, float] = {str(k): v for k, v in render_spec.path_wall_ratios.items()}
     mazes_dir = output_dir / book.slug / "puzzles" / "mazes"
     solutions_dir = output_dir / book.slug / "puzzles" / "solutions"
     mazes_dir.mkdir(parents=True, exist_ok=True)
     solutions_dir.mkdir(parents=True, exist_ok=True)
     for maze in mazes:
         name = f"{maze.index + 1:03d}_{maze.difficulty}.png"
-        render_maze(maze, target_side_px=_RENDER_SIDE_PX).save(mazes_dir / name)
-        render_solution(maze, target_side_px=_RENDER_SIDE_PX).save(solutions_dir / name)
+        render_maze(
+            maze,
+            target_side_px=_RENDER_SIDE_PX,
+            wall_thickness_px=wall_px,
+            path_wall_ratios=ratios,
+        ).save(mazes_dir / name)
+        render_solution(
+            maze,
+            target_side_px=_RENDER_SIDE_PX,
+            wall_thickness_px=wall_px,
+            path_wall_ratios=ratios,
+        ).save(solutions_dir / name)
     click.echo(f"Re-rendered {len(mazes)} maze + solution pair(s) to {mazes_dir.parent}")
 
 

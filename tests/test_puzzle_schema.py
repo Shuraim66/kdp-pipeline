@@ -212,3 +212,56 @@ def test_unknown_book_type_rejected_by_discriminator() -> None:
     data["book_type"] = "sudoku_grand_master"
     with pytest.raises(ValidationError):
         NicheConfig.model_validate(data)
+
+
+# --- PuzzleRenderSpec ------------------------------------------------------
+
+
+def test_puzzle_render_spec_defaults_present_without_override() -> None:
+    """A puzzle YAML without `render:` gets the schema's default ratios + wall floor."""
+    config = NicheConfig.model_validate(_puzzle_yaml_dict())
+    render = config.require_puzzle().puzzle.render
+    assert render.path_wall_ratios == {"easy": 4.0, "medium": 2.5, "hard": 1.8}
+    assert render.wall_thickness_px == 12
+
+
+def test_puzzle_render_spec_override_applies() -> None:
+    """Explicit render block in the YAML overrides the defaults."""
+    data = _puzzle_yaml_dict()
+    data["puzzle"]["render"] = {
+        "path_wall_ratios": {"easy": 4.5, "medium": 3.0, "hard": 2.2},
+        "wall_thickness_px": 14,
+    }
+    config = NicheConfig.model_validate(data)
+    render = config.require_puzzle().puzzle.render
+    assert render.path_wall_ratios == {"easy": 4.5, "medium": 3.0, "hard": 2.2}
+    assert render.wall_thickness_px == 14
+
+
+def test_puzzle_render_partial_ratios_rejected() -> None:
+    """Missing a difficulty in path_wall_ratios must fail explicitly."""
+    data = _puzzle_yaml_dict()
+    data["puzzle"]["render"] = {"path_wall_ratios": {"easy": 4.5}}
+    with pytest.raises(ValidationError, match="must set every difficulty"):
+        NicheConfig.model_validate(data)
+
+
+def test_puzzle_render_ratio_below_one_rejected() -> None:
+    """path < wall makes no visual sense; the validator must catch it."""
+    data = _puzzle_yaml_dict()
+    data["puzzle"]["render"] = {
+        "path_wall_ratios": {"easy": 0.5, "medium": 2.5, "hard": 1.8},
+    }
+    with pytest.raises(ValidationError, match=r">= 1\.0"):
+        NicheConfig.model_validate(data)
+
+
+def test_puzzle_render_wall_thickness_bounds_enforced() -> None:
+    """wall_thickness_px must sit in [4, 40]."""
+    data = _puzzle_yaml_dict()
+    data["puzzle"]["render"] = {"wall_thickness_px": 3}
+    with pytest.raises(ValidationError):
+        NicheConfig.model_validate(data)
+    data["puzzle"]["render"] = {"wall_thickness_px": 41}
+    with pytest.raises(ValidationError):
+        NicheConfig.model_validate(data)

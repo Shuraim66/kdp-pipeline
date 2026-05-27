@@ -181,6 +181,46 @@ class ColoringBody(_Strict):
     qa: QASpec
 
 
+class PuzzleRenderSpec(_Strict):
+    """Per-niche rendering controls for puzzle pages.
+
+    ``path_wall_ratios`` sets the path:wall pixel-width ratio per difficulty
+    — higher values mean wider passages a young child can trace with a
+    crayon, lower values pack tighter adult-style mazes. ``wall_thickness_px``
+    is a FLOOR on the rendered wall pixel size; the renderer fills the page
+    as much as it can while keeping walls ``>= wall_thickness_px``. For a
+    standard 8.5x11 puzzle book at 300 DPI, the page-filling computation
+    keeps walls comfortably above the floor — the floor only kicks in when
+    the grid is too dense for the canvas (and prevents printing hair-thin
+    walls that don't reproduce well on Amazon's offset press).
+    """
+
+    path_wall_ratios: dict[Literal["easy", "medium", "hard"], float] = Field(
+        default_factory=lambda: dict[Literal["easy", "medium", "hard"], float](
+            {"easy": 4.0, "medium": 2.5, "hard": 1.8}
+        )
+    )
+    wall_thickness_px: int = Field(default=12, ge=4, le=40)
+
+    @model_validator(mode="after")
+    def _ratios_cover_all_difficulties(self) -> PuzzleRenderSpec:
+        """All three difficulty keys must be set — partial overrides would silently default."""
+        required = {"easy", "medium", "hard"}
+        missing = required - set(self.path_wall_ratios)
+        if missing:
+            raise ValueError(
+                f"puzzle.render.path_wall_ratios must set every difficulty; "
+                f"missing: {sorted(missing)}"
+            )
+        for difficulty, ratio in self.path_wall_ratios.items():
+            if ratio < 1.0:
+                raise ValueError(
+                    f"puzzle.render.path_wall_ratios[{difficulty!r}] must be >= 1.0 "
+                    f"(paths cannot be narrower than walls); got {ratio}"
+                )
+        return self
+
+
 class PuzzleSpec(_Strict):
     """The `puzzle:` section — maze generation parameters."""
 
@@ -196,6 +236,9 @@ class PuzzleSpec(_Strict):
     solutions_section: Literal["end", "interleaved"] = "end"
     themed_borders: bool = False
     fixed_seed: int | None = None
+    # Per-niche path/wall sizing — defaults suit a 6-10 audience; override
+    # in the YAML to bias toddler-friendlier or adult-tighter.
+    render: PuzzleRenderSpec = Field(default_factory=PuzzleRenderSpec)
 
     @model_validator(mode="after")
     def _grid_sizes_cover_curve(self) -> PuzzleSpec:

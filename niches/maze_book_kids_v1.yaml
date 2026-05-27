@@ -25,12 +25,20 @@ puzzle:
   difficulty_curve: [easy, easy, medium, medium, hard]
   grid_sizes:
     easy: [10, 10]
-    medium: [15, 15]
-    hard: [20, 20]
+    medium: [12, 12]  # bumped from 15x15 for a sharper progression
+    hard: [15, 15]    # bumped down from 20x20 — too dense for ages 6-10
   include_solutions: true
   solutions_section: end
   themed_borders: false
   fixed_seed: null  # null = per-book derivation from book.id (reprintable)
+  render:
+    # Calibrated for ages 6-10: chunkier paths than the schema defaults so
+    # even the hard mazes stay tracable with a fine marker.
+    path_wall_ratios:
+      easy: 4.5
+      medium: 3.0
+      hard: 2.2
+    wall_thickness_px: 12
 
 front_matter:
   title_page: true

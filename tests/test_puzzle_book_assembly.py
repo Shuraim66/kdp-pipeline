@@ -73,9 +73,15 @@ def _config(**overrides: Any) -> NicheConfig:
 
 def test_render_all_puzzles_writes_paired_pngs(tmp_path: Path) -> None:
     config = _config()
-    mazes = generate_book_mazes(config.require_puzzle().puzzle, book_seed_prefix=1)
+    puzzle_body = config.require_puzzle()
+    mazes = generate_book_mazes(puzzle_body.puzzle, book_seed_prefix=1)
     maze_paths, solution_paths = render_all_puzzles(
-        mazes, target_side_px=600, output_dir=tmp_path, slug=config.slug
+        mazes,
+        target_side_px=600,
+        output_dir=tmp_path,
+        slug=config.slug,
+        wall_thickness_px=4,  # small target → small floor so the maze fits
+        path_wall_ratios={str(k): v for k, v in puzzle_body.puzzle.render.path_wall_ratios.items()},
     )
     assert len(maze_paths) == len(solution_paths) == 12
     for path in maze_paths + solution_paths:
@@ -88,9 +94,15 @@ def test_render_all_puzzles_writes_paired_pngs(tmp_path: Path) -> None:
 
 def test_validate_puzzles_passes_for_correctly_rendered_pngs(tmp_path: Path) -> None:
     config = _config()
-    mazes = generate_book_mazes(config.require_puzzle().puzzle, book_seed_prefix=1)
+    puzzle_body = config.require_puzzle()
+    mazes = generate_book_mazes(puzzle_body.puzzle, book_seed_prefix=1)
     maze_paths, solution_paths = render_all_puzzles(
-        mazes, target_side_px=900, output_dir=tmp_path, slug=config.slug
+        mazes,
+        target_side_px=900,
+        output_dir=tmp_path,
+        slug=config.slug,
+        wall_thickness_px=4,
+        path_wall_ratios={str(k): v for k, v in puzzle_body.puzzle.render.path_wall_ratios.items()},
     )
     issues = validate_puzzles(
         maze_paths=maze_paths,

@@ -58,12 +58,16 @@ def render_all_puzzles(
     target_side_px: int,
     output_dir: Path,
     slug: str,
+    wall_thickness_px: int,
+    path_wall_ratios: dict[str, float],
 ) -> tuple[list[Path], list[Path]]:
     """Render every maze + solution PNG to disk; return (maze_paths, solution_paths).
 
     Files land at ``output/<slug>/puzzles/mazes/{NNN_difficulty}.png`` and
     ``output/<slug>/puzzles/solutions/{NNN_difficulty}.png``. The directories
-    are created if missing.
+    are created if missing. ``wall_thickness_px`` + ``path_wall_ratios`` come
+    from ``config.body.puzzle.render`` so each niche renders to its own
+    audience (toddler-chunky vs adult-tight).
     """
     mazes_dir = output_dir / slug / "puzzles" / "mazes"
     solutions_dir = output_dir / slug / "puzzles" / "solutions"
@@ -77,11 +81,21 @@ def render_all_puzzles(
         # directory listing matches the page header "Maze 1", "Maze 2", ...
         name = f"{maze.index + 1:03d}_{maze.difficulty}.png"
         maze_path = mazes_dir / name
-        render_maze(maze, target_side_px=target_side_px).save(maze_path)
+        render_maze(
+            maze,
+            target_side_px=target_side_px,
+            wall_thickness_px=wall_thickness_px,
+            path_wall_ratios=path_wall_ratios,
+        ).save(maze_path)
         maze_paths.append(maze_path)
 
         solution_path = solutions_dir / name
-        render_solution(maze, target_side_px=target_side_px).save(solution_path)
+        render_solution(
+            maze,
+            target_side_px=target_side_px,
+            wall_thickness_px=wall_thickness_px,
+            path_wall_ratios=path_wall_ratios,
+        ).save(solution_path)
         solution_paths.append(solution_path)
     logger.info(
         "rendered {} maze PNG(s) + {} solution PNG(s) to {}",
@@ -283,7 +297,8 @@ def generate_and_render_book(
 
     Returns (mazes, maze_paths, solution_paths). The orchestrator calls this
     after entering the GENERATING status and uses the lengths to advance the
-    book to GENERATION_DONE.
+    book to GENERATION_DONE. Render settings are pulled from
+    ``config.body.puzzle.render`` so per-niche calibration is honoured.
     """
     puzzle_body = config.require_puzzle()
     mazes = generate_book_mazes(puzzle_body.puzzle, book_seed_prefix=book.seed_prefix)
@@ -292,5 +307,7 @@ def generate_and_render_book(
         target_side_px=target_side_px,
         output_dir=output_dir,
         slug=book.slug,
+        wall_thickness_px=puzzle_body.puzzle.render.wall_thickness_px,
+        path_wall_ratios={str(k): v for k, v in puzzle_body.puzzle.render.path_wall_ratios.items()},
     )
     return mazes, maze_paths, solution_paths
