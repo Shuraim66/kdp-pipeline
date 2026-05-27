@@ -56,17 +56,16 @@ _SYSTEM_PROMPT = (
     "JSON only, no surrounding text, no markdown fences."
 )
 
-_USER_TEMPLATE = """Generate KDP listing metadata for this coloring book.
+_USER_TEMPLATE = """Generate KDP listing metadata for this {product_type}.
 
 CONTEXT:
 - Niche: {niche}
 - Audience: {audience}
-- Contents: {design_count} bold and easy line-art designs themed around {niche}
-- Subject areas: {subjects}
+{contents_block}
 
 CONSTRAINTS:
 - title + subtitle combined: max 200 chars
-- Title must contain "coloring book" and "{primary_keyword}"
+- Title must contain "{product_type}" and "{primary_keyword}"
 - Description: 1500-2000 chars, 4 paragraphs (hook, what's inside, who it's \
 for, call to action). Plain text, line breaks OK, no emoji, no markdown.
 - Keywords: exactly 7, each <= 50 chars. Mix broad and long-tail. No brand \
@@ -87,6 +86,14 @@ OUTPUT FORMAT (JSON only):
   "keywords": ["", "", "", "", "", "", ""],
   "categories": ["", ""]
 }}"""
+
+# Per-book-type AI disclosure rendered into the KDP checklist's Listing block.
+# Coloring uses Fal.ai for every interior page plus the cover hero; puzzle
+# books generate the interior algorithmically and only call Fal.ai once.
+_AI_DISCLOSURE: dict[str, str] = {
+    "coloring": "AI-assisted generation throughout (line art + listing copy).",
+    "puzzle_maze": "AI used for cover hero only. Interior is algorithmically generated.",
+}
 
 _CHECKLIST_TEMPLATE = """# KDP Upload Checklist — {title}
 
@@ -109,6 +116,7 @@ _CHECKLIST_TEMPLATE = """# KDP Upload Checklist — {title}
 - **Age range**: 16+
 - **Language**: English
 - **Low-content book**: {low_content_label}
+- **AI disclosure**: {ai_disclosure}
 - **Publishing rights**: I own the copyright
 
 ## Print settings
@@ -167,6 +175,44 @@ def _render_template_block(template: DescriptionTemplate) -> str:
     )
 
 
+def _product_type_and_contents(config: NicheConfig) -> tuple[str, str]:
+    """Pick the noun + body-specific Contents/Subjects block for the prompt.
+
+    Coloring books print a "Contents:" line and a "Subject areas:" line —
+    matches the original (pre-refactor) template byte-for-byte so the
+    cozy_dogs snapshot test stays stable. Puzzle books print a single
+    "Contents:" line describing the puzzle count and difficulty mix.
+    """
+    coloring = config.coloring
+    if coloring is not None:
+        contents_block = (
+            f"- Contents: {config.book.page_count} bold and easy line-art "
+            f"designs themed around {config.niche}\n"
+            f"- Subject areas: {', '.join(s.name for s in coloring.subjects)}"
+        )
+        return "coloring book", contents_block
+
+    puzzle_body = config.require_puzzle()
+    spec = puzzle_body.puzzle
+    difficulties = sorted(set(spec.difficulty_curve))
+    difficulty_phrase: str
+    if len(difficulties) == 1:
+        difficulty_phrase = difficulties[0]
+    else:
+        # "easy to hard" — surface the bottom-to-top mix in one breath.
+        difficulty_phrase = " to ".join(difficulties[:: max(1, len(difficulties) - 1)])
+    solutions_clause = (
+        ", with a full solutions section at the back" if spec.include_solutions else ""
+    )
+    contents_block = (
+        f"- Contents: {spec.count} hand-crafted {spec.type} puzzles "
+        f"({difficulty_phrase}){solutions_clause}"
+    )
+    # Plain English noun for the title-must-contain constraint and the
+    # "Generate KDP listing metadata for this …" opening line.
+    return f"{spec.type} book", contents_block
+
+
 def build_metadata_prompt(
     config: NicheConfig,
     *,
@@ -177,17 +223,19 @@ def build_metadata_prompt(
 
     The rotated description-template skeleton (deterministic per ``book_id``)
     is injected as a structural hint; Claude is instructed to adapt, not copy.
+    The product-noun ("coloring book" / "maze book") and Contents/Subjects
+    block come from `_product_type_and_contents(config)` — book-type-aware.
     """
     template = pick_template(book_id)
-    coloring = config.require_coloring()
+    product_type, contents_block = _product_type_and_contents(config)
     # The skeleton text contains literal `{placeholders}` that must survive
     # str.format(). Python's format() does not recurse into substituted
     # values, so passing `template_block=` with raw braces is safe.
     user = _USER_TEMPLATE.format(
+        product_type=product_type,
         niche=config.niche,
         audience=config.book.target_audience,
-        design_count=config.book.page_count,
-        subjects=", ".join(subject.name for subject in coloring.subjects),
+        contents_block=contents_block,
         primary_keyword=config.metadata.keywords_seed[0],
         categories=" | ".join(config.metadata.categories),
         title_seed=config.metadata.title_seed,
@@ -308,6 +356,10 @@ def build_checklist(
     trim_w, trim_h = parse_trim_size(config.book.trim_size)
     cover = compute_cover_dimensions(interior_page_count, trim_w, trim_h)
     imprint = load_imprint(config.imprint)
+    ai_disclosure = _AI_DISCLOSURE.get(
+        config.body.kind,
+        "AI-assisted generation (see book pipeline notes).",
+    )
     return _CHECKLIST_TEMPLATE.format(
         title=metadata.title,
         slug=book.slug,
@@ -318,6 +370,7 @@ def build_checklist(
         keywords_block="\n".join(f"  - {kw}" for kw in metadata.keywords),
         categories_block="\n".join(f"  - {cat}" for cat in metadata.categories),
         low_content_label="Yes" if config.metadata.low_content else "No",
+        ai_disclosure=ai_disclosure,
         trim=config.book.trim_size.replace("x", " x "),
         page_count=interior_page_count,
         price=f"{config.book.price_usd:.2f}",
