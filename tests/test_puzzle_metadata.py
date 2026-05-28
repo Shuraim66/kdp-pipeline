@@ -6,10 +6,12 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import pytest
 from src.config.loader import load_niche_config
 from src.config.schema import NicheConfig
 from src.generators.metadata import (
     BookMetadata,
+    _product_type_and_contents,
     build_checklist,
     build_metadata_prompt,
 )
@@ -67,6 +69,52 @@ def _puzzle_dict(**overrides: Any) -> dict[str, Any]:
 
 def _puzzle_config() -> NicheConfig:
     return NicheConfig.model_validate(_puzzle_dict())
+
+
+def _puzzle_config_with_curve(curve: list[str]) -> NicheConfig:
+    """A test puzzle config with a custom difficulty curve."""
+    data = _puzzle_dict()
+    data["puzzle"]["difficulty_curve"] = curve
+    return NicheConfig.model_validate(data)
+
+
+# --- _product_type_and_contents (regression for the easy-to-hard bug) -----
+
+
+@pytest.mark.parametrize(
+    ("curve", "expected_phrase"),
+    [
+        # Three difficulties — alphabetical sort would give "easy to medium"
+        # (because sorted strings = ['easy','hard','medium'] and stride-2 picks
+        # ['easy','medium']). The ordinal sort must pick the actual span.
+        (["easy", "medium", "hard"], "easy to hard"),
+        # The real kids_book curve — used to bake the listing copy that
+        # mismatched the cover before the fix.
+        (["easy", "easy", "medium", "medium", "hard"], "easy to hard"),
+        # Two-difficulty spans.
+        (["easy", "hard"], "easy to hard"),
+        (["medium", "hard"], "medium to hard"),
+        (["easy", "medium"], "easy to medium"),
+        # Single-difficulty curves drop the " to " phrase entirely.
+        (["easy"], "easy"),
+        (["medium"], "medium"),
+        (["hard"], "hard"),
+    ],
+)
+def test_difficulty_phrase_respects_ordinal_order(curve: list[str], expected_phrase: str) -> None:
+    """Curve difficulties must order by ordinal (easy < medium < hard), not alphabetically.
+
+    Pre-fix bug: sorted(set(['easy','medium','hard'])) was alphabetical
+    (['easy','hard','medium']) and the renderer's stride pulled 'easy' +
+    'medium', silently advertising 'easy to medium' on books that ship
+    hard mazes. Listing copy ended up lying about the difficulty range.
+    """
+    config = _puzzle_config_with_curve(curve)
+    _product_type, contents_block = _product_type_and_contents(config)
+    assert f"({expected_phrase})" in contents_block, (
+        f"contents block for curve={curve} should mention '({expected_phrase})'; "
+        f"got: {contents_block}"
+    )
 
 
 # --- build_metadata_prompt -------------------------------------------------

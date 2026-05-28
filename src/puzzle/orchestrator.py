@@ -33,8 +33,12 @@ from src.settings import get_settings
 from src.utils.kdp_specs import total_interior_pages
 from src.utils.logging import book_log_file, logger
 
-# 7.5 in usable area (8.5 in trim - 0.5 in margin each side) at 300 DPI.
-_RENDER_SIDE_PX = 2250
+# 8 in image-safe area (8.5 in trim - 0.25 in margin each side) at 300 DPI.
+# The 0.25 in image-safe inset is what `_draw_image_page` in book_builder.py
+# uses to size the maze on the page (layout.safe_width). 2250 px (the old
+# 7.5 in / text-safe value) printed at ~281 DPI when stretched into the 8 in
+# image area — under KDP's 300 DPI minimum. 2400 px = 8 in x 300 DPI exactly.
+_RENDER_SIDE_PX = 2400
 
 
 def _require_book(book_id: object) -> Book:

@@ -194,13 +194,19 @@ def _product_type_and_contents(config: NicheConfig) -> tuple[str, str]:
 
     puzzle_body = config.require_puzzle()
     spec = puzzle_body.puzzle
-    difficulties = sorted(set(spec.difficulty_curve))
+    # Order by difficulty ordinal (easy < medium < hard), NOT alphabetically.
+    # `sorted(set(...))` on strings gives ['easy', 'hard', 'medium'] — striding
+    # would then pull "easy"+"medium" and silently drop the hard mazes from
+    # the listing copy. See test_difficulty_phrase_respects_ordinal_order.
+    difficulty_order = {"easy": 0, "medium": 1, "hard": 2}
+    difficulties = sorted(set(spec.difficulty_curve), key=difficulty_order.__getitem__)
     difficulty_phrase: str
     if len(difficulties) == 1:
         difficulty_phrase = difficulties[0]
     else:
-        # "easy to hard" — surface the bottom-to-top mix in one breath.
-        difficulty_phrase = " to ".join(difficulties[:: max(1, len(difficulties) - 1)])
+        # Span the easiest to the hardest — keeps the listing copy honest
+        # about the actual difficulty range a buyer is paying for.
+        difficulty_phrase = f"{difficulties[0]} to {difficulties[-1]}"
     solutions_clause = (
         ", with a full solutions section at the back" if spec.include_solutions else ""
     )

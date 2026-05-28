@@ -156,17 +156,20 @@ def _draw_grid(
 def render_maze(
     maze: GeneratedMaze,
     *,
-    target_side_px: int = 2250,
+    target_side_px: int = 2400,
     wall_thickness_px: int = DEFAULT_WALL_THICKNESS_PX,
     path_wall_ratios: dict[str, float] | None = None,
 ) -> Image.Image:
     """Render one maze as a print-ready PIL image with no solution overlay.
 
-    Default ``target_side_px=2250`` matches the 7.5 in usable area inside an
-    8.5x11 trim with a 0.5 in margin, at 300 DPI. ``wall_thickness_px`` and
-    ``path_wall_ratios`` come from ``config.body.puzzle.render`` for a real
-    book; defaults match ``PuzzleRenderSpec``'s defaults so direct callers
-    (tests, ad-hoc previews) get sensible output.
+    Default ``target_side_px=2400`` matches the 8 in image-safe area inside
+    an 8.5x11 trim with a 0.25 in margin, at 300 DPI — same constant the
+    puzzle book builder uses to place the maze on the page, so the printed
+    DPI is exactly 300 (not 281, which is what 2250 px stretched into 8 in
+    would print at). ``wall_thickness_px`` and ``path_wall_ratios`` come
+    from ``config.body.puzzle.render`` for a real book; defaults match
+    ``PuzzleRenderSpec``'s defaults so direct callers (tests, ad-hoc
+    previews) get sensible output.
     """
     if target_side_px <= 0:
         raise ValueError(f"target_side_px must be positive, got {target_side_px}")
@@ -192,7 +195,7 @@ def render_maze(
 def render_solution(
     maze: GeneratedMaze,
     *,
-    target_side_px: int = 2250,
+    target_side_px: int = 2400,
     wall_thickness_px: int = DEFAULT_WALL_THICKNESS_PX,
     path_wall_ratios: dict[str, float] | None = None,
 ) -> Image.Image:
