@@ -281,10 +281,24 @@ def _draw_grid(
     pad_y: int,
     wall_px: int,
 ) -> None:
-    """Paint walls black and draw START / FINISH text+arrow labels in the bands."""
+    """Paint walls black and draw START / FINISH text+arrow labels in the bands.
+
+    Mazelib records the start/end coordinates on the perimeter but does NOT
+    carve the outer wall there — the cell is left as a wall in `maze.grid`.
+    To make the path visibly exit the maze (so the START / FINISH arrows
+    point through an actual opening and not at a solid wall), we skip
+    painting those two perimeter cells. Start/end are always on the outer
+    boundary and always align with a perimeter passage slot, so leaving
+    the cell white opens a one-cell gap that connects directly to the
+    first interior path cell.
+    """
+    start_cell = (maze.start[0], maze.start[1])
+    end_cell = (maze.end[0], maze.end[1])
     for r, row in enumerate(maze.grid):
         for c, cell in enumerate(row):
             if cell != 1:
+                continue
+            if (r, c) == start_cell or (r, c) == end_cell:
                 continue
             draw.rectangle(_cell_box(r, c, x_offsets, y_offsets, pad_x, pad_y), fill=_WALL)
 

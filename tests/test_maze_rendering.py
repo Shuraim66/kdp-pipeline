@@ -226,6 +226,100 @@ def test_too_dense_maze_raises_clear_error() -> None:
         )
 
 
+# --- START / FINISH openings in the outer wall ---------------------------
+
+
+def _cell_interior_is_white(arr: np.ndarray, cell_box: tuple[int, int, int, int]) -> bool:
+    """True if every pixel inside the cell box (excluding 1-px shared edges) is white.
+
+    PIL's draw.rectangle paints inclusive on both ends, so adjacent walls own
+    the boundary pixels of every cell box. We sample the interior to verify
+    the cell itself is unpainted — that's the property "this cell is an
+    opening, not a wall".
+    """
+    x0, y0, x1, y1 = cell_box
+    if (x1 - x0) <= 2 or (y1 - y0) <= 2:
+        # Cell too thin to have an interior — trust the layout.
+        return True
+    region = arr[y0 + 1 : y1 - 1, x0 + 1 : x1 - 1]
+    return bool(((region[..., 0] == 255) & (region[..., 1] == 255) & (region[..., 2] == 255)).all())
+
+
+def test_start_and_end_cells_are_openings_not_walls() -> None:
+    """The renderer must skip painting the start/end perimeter cells so the
+    path visibly exits the maze (otherwise the arrows point at solid wall).
+
+    Mazelib records start/end as perimeter coordinates but does NOT carve
+    the outer wall — left to itself, every perimeter slot stays opaque
+    black after _draw_grid. This test pins the carving-by-skip fix.
+    """
+    maze = _maze(grid_size=(10, 10))
+    img = render_maze(maze, target_side_px=2400)
+    arr = np.array(img)
+    _, _, x_offsets, y_offsets, pad_x, pad_y = _layout(maze, target_side_px=2400)
+
+    for cell in (maze.start, maze.end):
+        r, c = cell
+        x0 = pad_x + x_offsets[c]
+        y0 = pad_y + y_offsets[r]
+        x1 = pad_x + x_offsets[c + 1]
+        y1 = pad_y + y_offsets[r + 1]
+        assert _cell_interior_is_white(arr, (x0, y0, x1, y1)), (
+            f"perimeter cell {cell} should be an opening (white interior), "
+            "but its interior contains painted pixels (likely still a wall)"
+        )
+
+
+def test_opening_aligns_with_first_interior_passage() -> None:
+    """The cell one step inward from each opening must be a passage too.
+
+    Mazelib always places outer entrances at a perimeter slot adjacent
+    to a passage cell — verify that invariant holds so the opening
+    leads into a traversable path, not a wall.
+    """
+    maze = _maze(grid_size=(10, 10))
+    for cell in (maze.start, maze.end):
+        r, c = cell
+        # Step one cell INWARD from the perimeter (decrement whichever
+        # axis sits on the boundary).
+        if r == 0:
+            ir, ic = 1, c
+        elif r == maze.height - 1:
+            ir, ic = maze.height - 2, c
+        elif c == 0:
+            ir, ic = r, 1
+        elif c == maze.width - 1:
+            ir, ic = r, maze.width - 2
+        else:  # pragma: no cover - mazelib outer entrances are always perimeter
+            pytest.fail(f"start/end cell {cell} not on perimeter")
+        assert maze.grid[ir][ic] == 0, (
+            f"opening at {cell} leads into {(ir, ic)} which is a wall (value 1) — "
+            "the gap would not connect to any traversable path"
+        )
+
+
+def test_solution_dashed_path_extends_through_openings() -> None:
+    """The first/last solution dash sits at the perimeter cell centre, in the
+    opening — confirms the dashed trail visibly enters and exits the maze."""
+    maze = _maze(grid_size=(10, 10))
+    sol = np.array(render_solution(maze, target_side_px=2400))
+    _, _, x_offsets, y_offsets, pad_x, pad_y = _layout(maze, target_side_px=2400)
+
+    for cell in (maze.start, maze.end):
+        r, c = cell
+        # Sample a small window around the cell centre — at least one pixel
+        # should be black (a dash), confirming the line reaches the opening.
+        cx = pad_x + (x_offsets[c] + x_offsets[c + 1]) // 2
+        cy = pad_y + (y_offsets[r] + y_offsets[r + 1]) // 2
+        window = sol[max(0, cy - 5) : cy + 6, max(0, cx - 5) : cx + 6]
+        has_black = ((window[..., 0] == 0) & (window[..., 1] == 0) & (window[..., 2] == 0)).any()
+        assert has_black, (
+            f"solution overlay does not reach perimeter cell {cell} — "
+            "dashed path may stop at the inner-cell boundary instead of "
+            "running through the opening"
+        )
+
+
 # --- solution renderer (B&W dashed) --------------------------------------
 
 
