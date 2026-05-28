@@ -39,10 +39,12 @@ from src.utils.kdp_specs import InteriorLayout, interior_layout
 from src.utils.logging import logger
 
 # Solver-side default tips for the copyright page when the niche YAML supplies none.
+# Interiors print in B&W only, so colour-coded markers are forbidden — refer
+# only to the printed text labels (START / FINISH arrows).
 _DEFAULT_MAZE_TIPS: tuple[str, ...] = (
     "Tips for solving:",
     "• Use a pencil so you can erase if you take a wrong turn.",
-    "• Start at the green square, finish at the red square.",
+    "• Start at the START arrow and find your way to the FINISH arrow.",
     "• Each puzzle gets a little trickier — take your time.",
     "• Stuck? Solutions are at the back of the book.",
 )

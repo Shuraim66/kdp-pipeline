@@ -1,0 +1,73 @@
+# Second puzzle book — a toddler/preschooler maze book under PlayLoop Press.
+# 30 mazes across an 8-element cycling difficulty curve (mostly easy with a
+# few medium and a single hard sprinkled in) plus 30 solutions at the back.
+# Same 8.5x11 trim, $6.99 price as maze_book_kids_v1; smaller grid sizes and
+# the chunkier, more reassuring intro voice are the only real differences.
+
+slug: maze_book_toddlers_v1
+niche: toddler_mazes
+imprint: playloop_press
+book_type: puzzle_maze
+
+book:
+  trim_size: "8.5x11"
+  page_count: 60  # 30 mazes + 30 solutions (front matter pages are extra)
+  price_usd: 6.99
+  target_audience: "Toddlers and preschoolers ages 2-4"
+
+puzzle:
+  type: maze
+  algorithm: prim
+  count: 30
+  # 8-element curve cycling over 30 mazes — `curve[i % 8]`. Lots of easy
+  # to build confidence, with a couple of medium puzzles and one hard each
+  # eight-maze block so the book keeps a little novelty without overwhelming
+  # very young solvers.
+  difficulty_curve: [easy, easy, easy, medium, easy, easy, medium, hard]
+  grid_sizes:
+    easy: [5, 5]
+    medium: [7, 7]
+    hard: [10, 10]
+  include_solutions: true
+  solutions_section: end
+  themed_borders: false
+  fixed_seed: null  # null = per-book derivation from book.id (reprintable)
+
+front_matter:
+  title_page: true
+  intro_page: true
+  intro_text: |
+    Welcome, little explorer!
+    Use a crayon or chunky pencil to find your way through each maze.
+    Start at the START arrow and follow the path to the FINISH arrow.
+    Ask a grown-up for help if you get stuck — there are answers in the back.
+
+metadata:
+  title_seed: "My First Maze Book for Toddlers"
+  subtitle_seed: "30 Fun and Easy Mazes for Kids Ages 2-4 — A Cute Activity Book for Preschoolers and Beginners"
+  author: "PlayLoop Studio"
+  keywords_seed:
+    - "maze book for toddlers"
+    - "activity book for kids ages 2-4"
+    - "preschool maze book"
+    - "first maze book for kids"
+    - "easy mazes for toddlers"
+    - "toddler activity book ages 3-5"
+    - "beginner maze book for kids"
+  categories:
+    - "Books > Children's Books > Activities, Crafts & Games > Activity Books > Mazes"
+    - "Books > Children's Books > Activities, Crafts & Games > Activity Books > General"
+  low_content: false
+
+cover:
+  background_color: "#fff8e7"
+  accent_color: "#c45a3a"
+  text_color: "#2b1810"
+  hero_subject: "A cheerful toddler with a chunky crayon happily tracing a simple maze path on the ground; bright and inviting; chunky shapes; safe rounded edges; clearly aimed at very young children"
+  hero_style: "colorful, simple flat illustration, vector style, no text, friendly and fun, designed to appeal to preschool-aged children and their parents"
+  font_family: "Fraunces"
+  bullets:
+    - "30 cute and simple mazes for little hands"
+    - "Perfect first puzzle book for ages 2-4"
+    - "Big, easy-to-follow paths with bright start and finish markers"
+    - "All solutions included at the back for grown-ups"
