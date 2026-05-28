@@ -69,7 +69,7 @@ cover:
   background_color: "#fff8e7"
   accent_color: "#c45a3a"
   text_color: "#2b1810"
-  hero_subject: "A cheerful kid with a pencil solving a colorful maze, bright and inviting, kids' activity book aesthetic"
+  hero_subject: "A cheerful kid holding a pencil, standing at the entrance of a large colorful maze viewed from a slight overhead angle, the maze clearly showing winding paths and walls, bright and inviting, kids' activity book aesthetic, the child looking excited to solve it"
   hero_style: "colorful, simple flat illustration, vector style, no text, friendly and fun, kid-appealing"
   font_family: "Fraunces"
   # Puzzle books MUST set cover.bullets explicitly — the coloring fallback
